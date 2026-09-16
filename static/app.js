@@ -287,12 +287,32 @@ window.loadQueryStudio = async function() {
     }
     
     queries.forEach(q => {
+        // target_key is expected to be ROLE|INDUSTRY|LOCATION
+        const parts = (q.target_key || '').split('|');
+        const role = parts[0] || '-';
+        const ind = parts[1] || '-';
+        const loc = parts[2] || '-';
+        
         tbody.innerHTML += `<tr>
             <td><input type="checkbox" ${q.is_enabled ? 'checked' : ''} onchange="toggleCampaignQuery(${q.id}, this.checked)"></td>
             <td><span class="badge badge-blue">${q.family}</span></td>
-            <td style="font-family:monospace; color:var(--text);">${q.query}</td>
-            <td style="color:var(--text-muted); font-size:0.8rem;">${q.target_key}</td>
+            <td>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <input type="text" id="query-input-${q.id}" value="${q.query.replace(/"/g, '&quot;')}" style="flex:1; padding:0.25rem; font-family:monospace; background:transparent; border:1px solid transparent;" onfocus="this.style.border='1px solid var(--primary)'" onblur="updateCampaignQuery(${q.id}, this.value); this.style.border='1px solid transparent'">
+                    <span style="font-size:0.75rem; color:var(--text-muted); cursor:help;" title="Click the text to edit">✏️</span>
+                </div>
+            </td>
+            <td style="color:var(--text-muted); font-size:0.8rem;">Role: ${role}<br>Ind: ${ind}<br>Loc: ${loc}</td>
         </tr>`;
+    });
+}
+
+window.updateCampaignQuery = async function(queryId, newText) {
+    if(!newText.trim()) return;
+    await fetch(`/api/campaign_queries/${queryId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ query: newText.trim() })
     });
 }
 
@@ -311,10 +331,9 @@ window.launchCampaignQueries = async function() {
     if(!confirm("Launch OSINT execution for enabled queries? This will take a while.")) return;
     
     try {
-        // Avvia il backend osint
-        alert("Campaign launched in background! Check terminal logs.");
-        // We could call an API endpoint here to execute the python script in background,
-        // but for now, LeadPilotPro expects terminal execution via run_growth_pipeline.command.
+        await fetch(`/api/campaigns/${campaignId}/launch`, { method: 'POST' });
+        alert("Campaign launched! Check terminal logs to run the backend runner.");
+        // We could trigger the backend process here, but LeadPilot usually expects manual or cron triggering.
     } catch (e) {
         alert("Error launching campaign: " + e);
     }

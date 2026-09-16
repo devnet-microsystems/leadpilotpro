@@ -189,7 +189,7 @@ def get_companies(user: dict = Depends(get_current_user)):
             MAX(relevance_score) as best_score,
             MAX(imported_at_utc) as last_discovered
         FROM prospects
-        GROUP BY company_name
+        GROUP BY company_name, target_url
         ORDER BY best_score DESC, last_discovered DESC
     """)
     return {"companies": [dict(r) for r in c.fetchall()]}
@@ -671,6 +671,23 @@ def get_campaign_queries(campaign_id: int, user: dict = Depends(get_current_user
     db.connection.row_factory = sqlite3.Row
     rows = db.connection.execute("SELECT * FROM campaign_queries WHERE campaign_id=?", (campaign_id,)).fetchall()
     return [dict(r) for r in rows]
+
+class UpdateCampaignQueryRequest(BaseModel):
+    query: str
+
+@app.put("/api/campaign_queries/{query_id}")
+def update_campaign_query(query_id: int, req: UpdateCampaignQueryRequest, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    db.connection.execute("UPDATE campaign_queries SET query = ? WHERE id = ?", (req.query, query_id))
+    db.connection.commit()
+    return {"status": "success"}
+
+@app.post("/api/campaigns/{campaign_id}/launch")
+def launch_campaign(campaign_id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    db.connection.execute("UPDATE research_campaigns SET status = 'RUNNING' WHERE id = ?", (campaign_id,))
+    db.connection.commit()
+    return {"status": "success"}
 
 class QueryRequest(BaseModel):
     query: str
