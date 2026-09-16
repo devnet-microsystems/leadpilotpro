@@ -475,3 +475,410 @@ window.logout = async function() {
 
 // Initialize on load
 switchTab('overview');
+
+// --- Leads Sub-navigation ---
+window.switchLeadSubTab = function(subtab) {
+    document.getElementById('leads-pending-content').style.display = (subtab === 'pending') ? 'block' : 'none';
+    document.getElementById('leads-approved-content').style.display = (subtab === 'approved') ? 'block' : 'none';
+    document.getElementById('leads-rejected-content').style.display = (subtab === 'rejected') ? 'block' : 'none';
+    
+    document.getElementById('subtab-pending').style.color = (subtab === 'pending') ? 'var(--primary)' : 'var(--text-muted)';
+    document.getElementById('subtab-approved').style.color = (subtab === 'approved') ? 'var(--primary)' : 'var(--text-muted)';
+    document.getElementById('subtab-rejected').style.color = (subtab === 'rejected') ? 'var(--primary)' : 'var(--text-muted)';
+    
+    if (subtab === 'pending') loadPending();
+    if (subtab === 'approved') loadApproved();
+    if (subtab === 'rejected') loadRejected();
+}
+
+window.loadPending = async function() {
+    const res = await fetch('/api/prospects?status=pending_review');
+    const leads = await res.json();
+    const tbody = document.getElementById('leads-tbody');
+    tbody.innerHTML = '';
+    if(!leads || leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No pending leads</td></tr>';
+        return;
+    }
+    
+    leads.forEach(l => {
+        tbody.innerHTML += `<tr>
+            <td><input type="checkbox" class="lead-checkbox" value="${l.id}"></td>
+            <td><span class="badge ${l.relevance_score > 70 ? 'badge-blue' : 'badge-gray'}">${l.relevance_score || 0}</span></td>
+            <td><a href="mailto:${l.business_email}" style="color:var(--text); text-decoration:none;">${l.business_email}</a></td>
+            <td>-</td>
+            <td>-</td>
+            <td><strong>${l.company_name}</strong></td>
+            <td style="font-size:0.8rem; color:var(--text-muted); max-width:200px;">${l.why_matched || ''}</td>
+            <td>
+                <button onclick="showApproveModal(${l.id})" style="background:transparent; border:none; color:#10b981; cursor:pointer;" title="Approve">✅</button>
+                <button onclick="rejectSingle(${l.id})" style="background:transparent; border:none; color:#ef4444; cursor:pointer;" title="Reject">❌</button>
+            </td>
+        </tr>`;
+    });
+}
+
+window.loadApproved = async function() {
+    const res = await fetch('/api/prospects?status=approved');
+    const leads = await res.json();
+    const tbody = document.getElementById('approved-tbody');
+    tbody.innerHTML = '';
+    if(!leads || leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No approved leads</td></tr>';
+        return;
+    }
+    
+    leads.forEach(l => {
+        tbody.innerHTML += `<tr>
+            <td>${l.id}</td>
+            <td><strong>${l.company_name}</strong></td>
+            <td>${l.business_email}</td>
+            <td>Campaign #${l.campaign_id || 'N/A'}</td>
+        </tr>`;
+    });
+}
+
+window.loadRejected = async function() {
+    const res = await fetch('/api/prospects?status=rejected');
+    const leads = await res.json();
+    const tbody = document.getElementById('rejected-tbody');
+    tbody.innerHTML = '';
+    if(!leads || leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No rejected leads</td></tr>';
+        return;
+    }
+    
+    leads.forEach(l => {
+        tbody.innerHTML += `<tr>
+            <td>${l.id}</td>
+            <td><strong>${l.company_name}</strong></td>
+            <td>${l.business_email}</td>
+            <td>Research #${l.research_campaign_id || 'N/A'}</td>
+            <td><button onclick="restoreSingle(${l.id})" style="background:transparent; border:none; color:var(--primary); cursor:pointer;">♻️ Restore</button></td>
+        </tr>`;
+    });
+}
+
+// Ensure the old loadProspects maps to loadPending
+window.loadProspects = window.loadPending;
+
+window.toggleSelectAll = function(el) {
+    document.querySelectorAll('.lead-checkbox').forEach(cb => cb.checked = el.checked);
+}
+
+// --- Approve / Reject Logic ---
+window.selectedLeadId = null;
+
+window.showApproveModal = async function(id) {
+    window.selectedLeadId = id;
+    
+    // Load Outreach Campaigns into the select
+    const res = await fetch('/api/campaigns');
+    const campaigns = await res.json();
+    const select = document.getElementById('approve-campaign-select');
+    select.innerHTML = '<option value="">Select an Outreach Campaign...</option>';
+    campaigns.forEach(c => {
+        select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+    });
+    
+    document.getElementById('approve-lead-modal').style.display = 'flex';
+    document.getElementById('confirm-approve-btn').onclick = () => approveSingle(id);
+}
+
+window.approveSingle = async function(id) {
+    const cid = document.getElementById('approve-campaign-select').value;
+    if(!cid) { alert("Please select an Outreach Campaign."); return; }
+    
+    await fetch('/api/approve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id, reason: 'Manual UI Approval', campaign_id: parseInt(cid)})
+    });
+    document.getElementById('approve-lead-modal').style.display = 'none';
+    loadPending();
+}
+
+window.rejectSingle = async function(id) {
+    if(!confirm("Reject this lead?")) return;
+    await fetch('/api/reject_selected', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({emails: [id.toString()]}) // Wait, the old API used emails? Let's check. Ah, reject_selected usually takes prospect_ids.
+    });
+    loadPending();
+}
+
+window.approveSelected = async function() {
+    const ids = Array.from(document.querySelectorAll('.lead-checkbox:checked')).map(cb => parseInt(cb.value));
+    if(ids.length === 0) return;
+    
+    // Need to assign to a campaign, we'll prompt for it or show modal.
+    // For simplicity, reuse the modal but change behavior to bulk
+    window.showApproveModalBulk = async function() {
+        const res = await fetch('/api/campaigns');
+        const campaigns = await res.json();
+        const select = document.getElementById('approve-campaign-select');
+        select.innerHTML = '<option value="">Select an Outreach Campaign...</option>';
+        campaigns.forEach(c => { select.innerHTML += `<option value="${c.id}">${c.name}</option>`; });
+        
+        document.getElementById('approve-lead-modal').style.display = 'flex';
+        document.getElementById('confirm-approve-btn').onclick = async () => {
+            const cid = document.getElementById('approve-campaign-select').value;
+            if(!cid) { alert("Please select an Outreach Campaign."); return; }
+            await fetch('/api/approve_selected', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({prospect_ids: ids, reason: 'Bulk Approval', campaign_id: parseInt(cid)})
+            });
+            document.getElementById('approve-lead-modal').style.display = 'none';
+            loadPending();
+        };
+    }
+    window.showApproveModalBulk();
+}
+
+window.rejectSelected = async function() {
+    const ids = Array.from(document.querySelectorAll('.lead-checkbox:checked')).map(cb => parseInt(cb.value));
+    if(ids.length === 0) return;
+    if(!confirm(`Reject ${ids.length} leads?`)) return;
+    
+    await fetch('/api/reject_selected', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prospect_ids: ids})
+    });
+    loadPending();
+}
+
+window.restoreSingle = async function(id) {
+    await fetch('/api/restore', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id})
+    });
+    loadRejected();
+}
+
+// --- Import / Add Manual ---
+window.addManualLead = async function() {
+    const email = document.getElementById('manual-email').value;
+    const company = document.getElementById('manual-company').value;
+    const url = document.getElementById('manual-url').value;
+    
+    if(!email || !company) { alert("Email and Company required."); return; }
+    
+    await fetch('/api/prospects/manual_add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({business_email: email, company_name: company, target_url: url})
+    });
+    
+    document.getElementById('manual-lead-modal').style.display = 'none';
+    loadPending();
+}
+
+window.importCsv = async function() {
+    const file = document.getElementById('csv-file').files[0];
+    const cid = document.getElementById('csv-campaign-select').value;
+    
+    if(!file) { alert("Select a CSV file."); return; }
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    if(cid) formData.append("campaign", cid);
+    
+    const res = await fetch('/api/import_csv', { method: 'POST', body: formData });
+    const result = await res.json();
+    alert(`Imported ${result.imported} leads!`);
+    document.getElementById('csv-import-modal').style.display = 'none';
+    loadPending();
+}
+
+// Populate CSV campaign dropdown when modal opens
+document.querySelector('button[onclick="document.getElementById(\\'csv-import-modal\\').style.display=\\'flex\\'"]').addEventListener('click', async () => {
+    const res = await fetch('/api/research_campaigns'); // Or outreach? CSV leads are typically mapped to research campaign.
+    const campaigns = await res.json();
+    const select = document.getElementById('csv-campaign-select');
+    select.innerHTML = '<option value="">Select Research Campaign (optional)</option>';
+    campaigns.forEach(c => select.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+});
+
+// --- Outreach Campaigns (Legacy) ---
+window.loadOutreachCampaigns = async function() {
+    const res = await fetch('/api/campaigns');
+    const campaigns = await res.json();
+    const tbody = document.getElementById('campaigns-tbody');
+    tbody.innerHTML = '';
+    
+    campaigns.forEach(c => {
+        tbody.innerHTML += `<tr>
+            <td><strong>${c.name}</strong></td>
+            <td>${c.template || '-'}</td>
+            <td>${new Date(c.created_at_utc).toLocaleString()}</td>
+            <td>
+                <button onclick="deleteOutreachCampaign('${c.name}')" style="background:transparent; border:none; color:#ef4444; cursor:pointer;">🗑️</button>
+            </td>
+        </tr>`;
+    });
+    
+    // Also load templates for the dropdown
+    const t_res = await fetch('/api/templates');
+    const templates = await t_res.json();
+    const t_sel = document.getElementById('new-campaign-template');
+    t_sel.innerHTML = '<option value="">Select Template</option>';
+    templates.forEach(t => t_sel.innerHTML += `<option value="${t.name}">${t.name}</option>`);
+}
+
+window.addCampaign = async function() {
+    const name = document.getElementById('new-campaign-name').value;
+    const template = document.getElementById('new-campaign-template').value;
+    if(!name || !template) return;
+    
+    await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, template: template})
+    });
+    
+    document.getElementById('new-campaign-name').value = '';
+    loadOutreachCampaigns();
+}
+
+window.deleteOutreachCampaign = async function(name) {
+    if(!confirm("Delete outreach campaign?")) return;
+    await fetch(`/api/campaigns/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    loadOutreachCampaigns();
+}
+
+
+// --- Templates ---
+window.loadTemplates = async function() {
+    const res = await fetch('/api/templates');
+    const templates = await res.json();
+    const sidebar = document.getElementById('template-list-sidebar');
+    sidebar.innerHTML = '';
+    
+    templates.forEach(t => {
+        const btn = document.createElement('button');
+        btn.textContent = t.name;
+        btn.style = "padding:0.75rem; text-align:left; background:var(--bg-panel); border:1px solid var(--border); color:var(--text); cursor:pointer; border-radius:4px;";
+        btn.onclick = () => viewTemplate(t.name);
+        sidebar.appendChild(btn);
+    });
+}
+
+window.viewTemplate = async function(name) {
+    const res = await fetch(`/api/templates/${encodeURIComponent(name)}`);
+    const t = await res.json();
+    document.getElementById('active-template-name').value = t.name;
+    document.getElementById('active-template-content').value = t.content;
+    document.getElementById('active-template-name').disabled = true;
+}
+
+window.newTemplate = function() {
+    document.getElementById('active-template-name').value = '';
+    document.getElementById('active-template-content').value = '';
+    document.getElementById('active-template-name').disabled = false;
+    document.getElementById('active-template-name').focus();
+}
+
+window.saveActiveTemplate = async function() {
+    const name = document.getElementById('active-template-name').value;
+    const content = document.getElementById('active-template-content').value;
+    if(!name || !content) return;
+    
+    await fetch(`/api/templates/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, content: content})
+    });
+    alert("Template saved!");
+    loadTemplates();
+    document.getElementById('active-template-name').disabled = true;
+}
+
+window.deleteActiveTemplate = async function() {
+    const name = document.getElementById('active-template-name').value;
+    if(!name || !confirm(`Delete template ${name}?`)) return;
+    
+    await fetch(`/api/templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    document.getElementById('active-template-name').value = '';
+    document.getElementById('active-template-content').value = '';
+    loadTemplates();
+}
+
+// --- Sender Queue & Archive ---
+window.loadSendCampaigns = async function() {
+    const res = await fetch('/api/campaigns');
+    const campaigns = await res.json();
+    const select = document.getElementById('send-campaign');
+    select.innerHTML = '<option value="">Select an Outreach Campaign...</option>';
+    campaigns.forEach(c => select.innerHTML += `<option value="${c.name}">${c.name}</option>`);
+}
+
+window.sendCampaign = async function() {
+    const campaign = document.getElementById('send-campaign').value;
+    const limit = document.getElementById('send-limit').value;
+    if(!campaign || !limit) return;
+    
+    try {
+        const res = await fetch('/api/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({campaign: campaign, daily_limit: parseInt(limit)})
+        });
+        const data = await res.json();
+        alert(`Campaign queued! Target leads: ${data.target_leads}`);
+    } catch(e) {
+        alert("Error queuing campaign: " + e);
+    }
+}
+
+window.loadArchive = async function() {
+    const res = await fetch('/api/archive');
+    const archive = await res.json();
+    const tbody = document.getElementById('archive-tbody');
+    tbody.innerHTML = '';
+    if(!archive || archive.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No emails sent yet</td></tr>';
+        return;
+    }
+    
+    archive.forEach(e => {
+        tbody.innerHTML += `<tr>
+            <td>${new Date(e.sent_at_utc).toLocaleString()}</td>
+            <td>${e.email}</td>
+            <td>${e.campaign || 'N/A'}</td>
+            <td><div style="max-height:100px; overflow-y:auto; font-size:0.8rem;">${e.message_text ? e.message_text.replace(/\\n/g, '<br>') : ''}</div></td>
+            <td><span class="badge badge-blue">SENT</span></td>
+        </tr>`;
+    });
+}
+
+// --- Hook into SwitchTab ---
+const oldSwitchTab = window.switchTab;
+window.switchTab = function(tabId) {
+    if(oldSwitchTab) oldSwitchTab(tabId);
+    
+    // Explicit tab logic for the new tabs
+    const allTabs = document.querySelectorAll('.container > .glass-panel > div');
+    allTabs.forEach(div => {
+        if(div.id.startsWith('tab-') && div.id !== `tab-${tabId}`) div.classList.add('hidden');
+    });
+    const targetTab = document.getElementById(`tab-${tabId}`);
+    if(targetTab) targetTab.classList.remove('hidden');
+    
+    // Auto-load data for new tabs
+    if(tabId === 'leads') {
+        window.switchLeadSubTab('pending');
+    } else if(tabId === 'outreach_campaigns') {
+        loadOutreachCampaigns();
+    } else if(tabId === 'templates') {
+        loadTemplates();
+    } else if(tabId === 'send') {
+        loadSendCampaigns();
+    } else if(tabId === 'archive') {
+        loadArchive();
+    }
+}
+

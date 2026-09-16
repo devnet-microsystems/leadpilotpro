@@ -7,7 +7,7 @@ venv/
 env/
 
 # Databases and Local State
-*.sqlite3
+*.sqlite3*
 *.db
 *.csv
 *.jsonl

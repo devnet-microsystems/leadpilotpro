@@ -291,14 +291,14 @@ class OutreachDatabase:
         query += " ORDER BY p.id"
         return self.connection.execute(query, params).fetchall()
 
-    def approve(self, prospect_id: int, reason: str) -> bool:
+    def approve(self, prospect_id: int, reason: str, campaign_id: int | None = None) -> bool:
         cursor = self.connection.execute(
             """
             UPDATE prospects
-            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?
+            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?, campaign_id = COALESCE(?, campaign_id)
             WHERE id = ? AND status = 'pending_review'
             """,
-            (utc_now(), reason.strip(), prospect_id),
+            (utc_now(), reason.strip(), campaign_id, prospect_id),
         )
         self.connection.commit()
         return cursor.rowcount == 1
@@ -308,7 +308,7 @@ class OutreachDatabase:
         cursor = self.connection.execute(
             """
             UPDATE prospects
-            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?
+            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?, campaign_id = COALESCE(?, campaign_id)
             WHERE campaign_id = ? AND status = 'pending_review'
             """,
             (utc_now(), reason.strip(), camp_id),
