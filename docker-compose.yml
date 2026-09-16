@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng-data:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: searxng-redis
+    volumes:
+      - searxng-redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  searxng-redis-data:

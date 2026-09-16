@@ -1,0 +1,17 @@
+# Configurazione SMTP Infomaniak (Porta 587 con STARTTLS come da script)
+SMTP_HOST=mail.infomaniak.com
+SMTP_PORT=587
+SMTP_USERNAME=antoniomichelotti@devnet-microsystems.com
+SMTP_PASSWORD=Klezr0x77@
+# Identità del Mago
+OUTREACH_FROM_NAME="Antonio Michelotti"
+OUTREACH_FROM_EMAIL=antoniomichelotti@devnet-microsystems.com
+OUTREACH_REPLY_TO=antoniomichelotti@devnet-microsystems.com
+OUTREACH_UNSUBSCRIBE_ADDRESS=antoniomichelotti@devnet-microsystems.com
+OUTREACH_COMPANY_NAME="DEV-NET Microsystems"
+OUTREACH_COMPANY_WEBSITE=https://devnet-microsystems.com/
+
+# Limiti di fuoco (lasciali bassi all'inizio per scaldare il server e non finire in spam)
+OUTREACH_DAILY_LIMIT=5
+OUTREACH_MIN_DELAY_SECONDS=90
+OUTREACH_MAX_DELAY_SECONDS=150

@@ -1,0 +1,22 @@
+--- web_server.py
++++ web_server.py
+@@ -153,6 +153,19 @@
+     db = OutreachDatabase(DB_PATH)
+     return [dict(r) for r in db.list_prospects(status, date_from, date_to)]
+ 
++@app.get("/api/contacts")
++def get_unique_contacts(user: dict = Depends(get_current_user)):
++    if not DB_PATH.exists():
++        return []
++    db = OutreachDatabase(DB_PATH)
++    rows = db.connection.execute('''
++        SELECT DISTINCT business_email, company_name 
++        FROM prospects 
++        WHERE business_email IS NOT NULL AND business_email != ''
++        ORDER BY company_name, business_email
++    ''').fetchall()
++    return [dict(r) for r in rows]
++
+ class ApproveRequest(BaseModel):
+     id: int
+     reason: str

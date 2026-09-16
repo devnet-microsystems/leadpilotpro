@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadPilot Pro</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; border-bottom: 1px solid var(--border); margin-bottom: 0;">
+        <div style="padding-bottom: 1rem;">
+            <h1 style="margin: 0;">LeadPilot Pro</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 0;">Unified Local Market Intelligence</p>
+        </div>
+        
+        <div class="tabs" style="flex: 1; border-bottom: none; margin-bottom: 0; justify-content: center; padding-bottom: 0; overflow: visible; white-space: nowrap;">
+            <div class="tab active" onclick="switchTab('overview')">Dashboard</div>
+            <div class="tab" onclick="switchTab('research_campaigns')">Campaigns</div>
+            <div class="tab" onclick="switchTab('query_studio')">Query Studio</div>
+            <div class="tab" onclick="switchTab('leads')">Leads</div>
+            <div class="tab" onclick="switchTab('companies')">Companies</div>
+            <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+            
+            <div class="dropdown">
+                <div class="tab" onclick="switchTab('providers')">System ▾</div>
+                <div class="dropdown-content">
+                    <div class="tab" onclick="switchTab('providers')">Providers</div>
+                    <div class="tab" onclick="switchTab('settings')">Settings</div>
+                    <div class="tab" onclick="switchTab('outreach')" style="color:var(--text-muted)">Old Outreach...</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding-bottom: 1rem;">
+            <button onclick="logout()" style="background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Logout</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Main Content -->
+        <div class="glass-panel">
+
+            <!-- Overview Tab -->
+            <div id="tab-overview">
+                <div class="action-bar">
+                    <h2>Dashboard Overview</h2>
+                </div>
+                
+                <div class="stats-grid" style="margin-bottom: 2rem; grid-template-columns: repeat(4, 1fr);">
+                    <div class="glass-panel stat-card">
+                        <h3>Total Leads Found</h3>
+                        <div class="value" style="color: var(--text)" id="stat-total">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Pending Review</h3>
+                        <div class="value" id="stat-pending">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Approved Queue</h3>
+                        <div class="value" style="color: var(--primary)" id="stat-approved">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Emails Sent</h3>
+                        <div class="value" style="color: var(--accent)" id="stat-sent">0</div>
+                    </div>
+                </div>
+
+                <div class="glass-panel" style="padding: 1.5rem; height: 400px; display: flex; align-items: center; justify-content: center;">
+                    <canvas id="sentChart" style="max-height: 100%;"></canvas>
+                </div>
+            </div>
+
+            <!-- New LeadPilot 2.0 Tabs -->
+            <!-- Research Campaigns Tab -->
+            <div id="tab-research_campaigns" class="hidden">
+                <div class="action-bar">
+                    <h2>AI Research Campaigns</h2>
+                    <button class="btn-success" onclick="document.getElementById('new-campaign-modal').style.display='block'" style="padding:0.75rem 2rem;">+ New Campaign</button>
+                </div>
+                
+                <div style="display:flex; gap:2rem;">
+                    <div style="flex:1;">
+                        <h3>Sales Offers</h3>
+                        <div class="glass-panel" style="padding:1rem; margin-bottom:1rem;">
+                            <input type="text" id="new-offer-name" placeholder="Offer Name (e.g. NextJS Migration)" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:4px;">
+                            <textarea id="new-offer-desc" placeholder="Describe the offer value proposition, pricing, benefits..." style="width:100%; padding:0.5rem; height:80px; margin-bottom:0.5rem; border-radius:4px;"></textarea>
+                            <button onclick="createOffer()" style="background:var(--primary); padding:0.5rem 1rem;">+ Add Offer</button>
+                        </div>
+                        <ul id="offers-list" style="list-style:none; padding:0;"></ul>
+                    </div>
+                    
+                    <div style="flex:1;">
+                        <h3>Ideal Customer Profiles (ICP)</h3>
+                        <div class="glass-panel" style="padding:1rem; margin-bottom:1rem;">
+                            <input type="text" id="new-icp-name" placeholder="ICP Name (e.g. EU Tech Startups)" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:4px;">
+                            <input type="text" id="new-icp-roles" placeholder="Roles (comma separated: CTO, Founder)" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:4px;">
+                            <input type="text" id="new-icp-industries" placeholder="Industries (comma separated: SaaS, FinTech)" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:4px;">
+                            <input type="text" id="new-icp-locations" placeholder="Locations (comma separated: London, Berlin)" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:4px;">
+                            <button onclick="createICP()" style="background:var(--primary); padding:0.5rem 1rem;">+ Add ICP</button>
+                        </div>
+                        <ul id="icps-list" style="list-style:none; padding:0;"></ul>
+                    </div>
+                </div>
+
+                <h3 style="margin-top:2rem;">Your Campaigns</h3>
+                <div id="campaigns-list">
+                    <p style="color:var(--text-muted);">Loading campaigns...</p>
+                </div>
+            </div>
+
+            <!-- Modal for New Campaign -->
+            <div id="new-campaign-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+                <div class="glass-panel" style="width:500px; padding:2rem; max-width:90%; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
+                    <h2 style="margin-top:0;">Create New Research Campaign</h2>
+                    <label style="display:block; margin-top:1rem; color:var(--text-muted);">Campaign Name</label>
+                    <input type="text" id="new-campaign-name-input" placeholder="e.g. Q4 WebAuthn Push" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem;">
+                    
+                    <label style="display:block; margin-top:1rem; color:var(--text-muted);">Select Sales Offer</label>
+                    <select id="new-campaign-offer" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem;"></select>
+                    
+                    <label style="display:block; margin-top:1rem; color:var(--text-muted);">Select ICP</label>
+                    <select id="new-campaign-icp" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem;"></select>
+                    
+                    <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
+                        <button onclick="document.getElementById('new-campaign-modal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text);">Cancel</button>
+                        <button onclick="createResearchCampaign()" style="background:var(--primary);">Create & Generate Strategies</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Query Studio Tab -->
+            <div id="tab-query_studio" class="hidden">
+                <div class="action-bar">
+                    <h2>Query Studio</h2>
+                </div>
+                <div id="query-studio-content">
+                    <p style="color:var(--text-muted);">Select a campaign to view its Query Strategy.</p>
+                </div>
+                <!-- Manual override will go here -->
+            </div>
+
+            <!-- Leads Tab -->
+            <div id="tab-leads" class="hidden">
+                <div class="action-bar">
+                    <h2>Qualified Leads</h2>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name / Email</th>
+                                <th>Company</th>
+                                <th>Why Matched?</th>
+                                <th>Campaign</th>
+                                <th>Relevance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leads-tbody">
+                            <tr><td colspan="5" style="text-align:center;">Loading leads...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Companies Tab -->
+            <div id="tab-companies" class="hidden">
+                <div class="action-bar">
+                    <h2>Discovered Companies</h2>
+                </div>
+                <p style="color:var(--text-muted);">Loading companies...</p>
+            </div>
+
+            <!-- Analytics Tab -->
+            <div id="tab-analytics" class="hidden">
+                <div class="action-bar">
+                    <h2>Performance Analytics</h2>
+                </div>
+                <p style="color:var(--text-muted);">Loading analytics...</p>
+            </div>
+
+            <!-- Providers Tab -->
+            <div id="tab-providers" class="hidden">
+                <div class="action-bar">
+                    <h2>Provider Configuration</h2>
+                </div>
+                <p style="color:var(--text-muted);">Brave Search (P2) is Active.</p>
+            </div>
+
+            <!-- OSINT Research Tab (Legacy) -->
+            <div id="tab-research" class="hidden">
+                <div style="background:var(--bg-panel); color:var(--text-muted); padding:1rem; margin-bottom:1rem; border-left:4px solid #f59e0b;">
+                    <strong>Legacy Mode:</strong> Manual search has been moved to Query Studio.
+                </div>
+                <!-- Advanced Prospecting -->
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1.5rem; border-left: 4px solid #f43f5e;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0; margin-bottom: 0.5rem;">
+                        <h2 style="margin:0; color:#f43f5e;">Lusha Advanced Prospecting</h2>
+                        <div id="lusha-credits-badge" style="background:rgba(244, 63, 94, 0.1); color:#f43f5e; padding:0.5rem 1rem; border-radius:20px; font-weight:bold; font-size:0.875rem; cursor:pointer;" onclick="fetchLushaCredits()">
+                            💳 Lusha Credits: Loading...
+                        </div>
+                    </div>
+                    <p style="color:var(--text-muted); margin-bottom:1rem;">Find new companies and contacts using Lusha's database filters. Leaves target domain empty.</p>
+                    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
+                        <div style="flex:1; min-width:150px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Country</label>
+                            <input type="text" id="lusha-adv-country" placeholder="e.g. United States" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">State</label>
+                            <input type="text" id="lusha-adv-state" placeholder="e.g. Texas" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Industry Label</label>
+                            <input type="text" id="lusha-adv-industry" placeholder="e.g. Marketing" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Job Title</label>
+                            <input type="text" id="lusha-adv-role" placeholder="e.g. Founder" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="width:80px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Limit</label>
+                            <input type="number" id="lusha-adv-limit" value="10" min="1" max="50" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <button onclick="prospectLusha()" id="lusha-adv-btn" style="background:#f43f5e; color:white; padding:0.75rem 2rem; font-weight:bold;">🔍 Prospect Database</button>
+                    </div>
+                </div>
+
+                <!-- Precision Prospecting -->
+                <div class="glass-panel" style="margin-bottom:2rem; padding:1.5rem; border-left: 4px solid #f43f5e;">
+                    <h2 style="margin-top:0; color:#f43f5e;">Lusha Precision Search</h2>
+                    <p style="color:var(--text-muted); margin-bottom:1rem;">Target a specific company by domain and job title.</p>
+                    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
+                        <div style="flex:1; min-width:200px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Target Domain</label>
+                            <input type="text" id="lusha-domain" placeholder="e.g. microsoft.com" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="flex:1; min-width:200px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Job Title / Seniority</label>
+                            <input type="text" id="lusha-role" placeholder="e.g. Sales Director" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <div style="width:80px;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Limit</label>
+                            <input type="number" id="lusha-limit" value="10" min="1" max="50" style="width:100%; padding:0.75rem; border-radius:8px;">
+                        </div>
+                        <button onclick="searchLusha()" id="lusha-btn" style="background:#f43f5e; color:white; padding:0.75rem 2rem; font-weight:bold;">🎯 Precision Search</button>
+                    </div>
+                </div>
+                
+                <hr style="border-color: var(--border); margin: 2rem 0;">
+                <div class="action-bar">
+                    <h2>OSINT Query Manager</h2>
+                    <button class="btn-success" onclick="startResearch()" style="background:#ef4444; padding:0.75rem 2rem; font-size:1rem; font-weight:bold;">🚀 START SCRAPING</button>
+                </div>
+                
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1rem; display:flex; gap:1rem; align-items:center;">
+                    <input type="text" id="new-query" placeholder="New Target (e.g. Luxury Web Agencies Dubai)" style="flex:1; padding:0.75rem; border-radius:8px;">
+                    <button style="background:var(--primary); padding:0.75rem 1.5rem;" onclick="addQuery()">+ Add Query</button>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="selectAllQueries" onclick="toggleSelectAllQueries()"></th>
+                                <th>Target Search Query</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queries-tbody">
+                            <tr><td colspan="2" style="text-align:center;">Loading queries...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <p style="color:var(--text-muted); font-size:0.85rem; margin-top:1rem; margin-bottom:2rem;">
+                    Select the queries you want to run, then click "Start Scraping". DuckDuckGo will extract business emails for the selected targets.
+                </p>
+                
+                <h2>Execution History</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date (UTC)</th>
+                                <th>Executed Query</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody">
+                            <tr><td colspan="2" style="text-align:center;">Loading history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div style="margin-top:2rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:flex-end;">
+                    <h3 style="margin:0;">Live OSINT Scraping Logs</h3>
+                    <button style="background:transparent; border:1px solid var(--accent); color:var(--accent); font-size:0.875rem; padding:0.25rem 0.75rem;" onclick="downloadLogs('research')">⬇️ Download Logs</button>
+                </div>
+                <div class="glass-panel" style="padding:1rem;">
+                    <pre id="research-logs-terminal" style="background:var(--bg-color); color:#ef4444; padding:1rem; border-radius:8px; font-family:monospace; min-height:200px; max-height:400px; overflow-y:auto; margin:0; border:1px solid #334155; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                </div>
+            </div>
+
+            <!-- Campaigns Tab -->
+            <div id="tab-campaigns" class="hidden">
+                <div class="action-bar">
+                    <h2>Campaign Manager</h2>
+                </div>
+                
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1rem; display:flex; gap:1rem; align-items:center;">
+                    <input type="text" id="new-campaign-name" placeholder="Campaign Name (e.g. lux-real-estate)" style="flex:1; padding:0.75rem; border-radius:8px;">
+                    <select id="new-campaign-template" style="flex:1; padding:0.75rem; border-radius:8px;">
+                        <option value="">Loading templates...</option>
+                    </select>
+                    <button style="background:var(--primary); padding:0.75rem 1.5rem;" onclick="addCampaign()">+ Create Campaign</button>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Campaign Name</th>
+                                <th>Linked Template</th>
+                                <th>Created (UTC)</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="campaigns-tbody">
+                            <tr><td colspan="4" style="text-align:center;">Loading campaigns...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pending Tab -->
+            <div id="tab-pending">
+                <div class="action-bar">
+                    <h2>Prospects Awaiting Approval</h2>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                        <div class="date-filter-group" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="date" id="pending-date-from" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <span style="color: var(--text-muted);">to</span>
+                            <input type="date" id="pending-date-to" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <button onclick="loadPending()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem; border-radius: 4px; cursor: pointer;">🔍 Filter</button>
+                        </div>
+                        <div style="border-left: 1px solid var(--border); height: 24px; margin: 0 0.5rem;"></div>
+                        <button onclick="exportTableToCSV('pending-tbody', 'pending_prospects.csv')" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">📥 Export CSV</button>
+                        <button onclick="window.print()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
+                        
+                        <select id="campaign-select">
+                            <option value="">Loading campaigns...</option>
+                        </select>
+                        <button class="btn-success" onclick="approveAll()">Approve All in Original Campaign</button>
+                    </div>
+                </div>
+                
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap; border: 1px dashed var(--primary);">
+                    <div style="flex:1; min-width: 250px;">
+                        <h3 style="margin-top:0; margin-bottom:0.25rem;">Add Lead Manually</h3>
+                        <p style="margin:0; font-size:0.875rem; color:var(--text-muted);">Enter a single lead's details to push them into the queue.</p>
+                    </div>
+                    <input type="text" id="manual-lead-email" placeholder="Email Address" style="padding:0.75rem; border-radius:8px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--border);">
+                    <input type="text" id="manual-lead-company" placeholder="Company Name" style="padding:0.75rem; border-radius:8px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--border);">
+                    <select id="manual-lead-campaign" style="padding:0.75rem; border-radius:8px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--border);">
+                        <option value="">Select target campaign...</option>
+                    </select>
+                    <button id="btn-manual-add" style="background:#10b981; white-space: nowrap;" onclick="addManualLead()">➕ Add Lead</button>
+                </div>
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap; border: 1px dashed var(--primary);">
+                    <div style="flex:1; min-width: 250px;">
+                        <h3 style="margin-top:0; margin-bottom:0.25rem;">Import External Leads (CSV)</h3>
+                        <p style="margin:0; font-size:0.875rem; color:var(--text-muted);">Upload a CSV file (e.g. from Lusha). We will auto-extract Name, Company, and Email.</p>
+                    </div>
+                    <input type="file" id="csv-upload-file" accept=".csv" style="padding:0.5rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                    <select id="csv-upload-campaign" style="padding:0.75rem; border-radius:8px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--border);">
+                        <option value="">Select target campaign...</option>
+                    </select>
+                    <button id="btn-import-csv" style="background:#10b981; white-space: nowrap;" onclick="importCsv()">Upload & Import</button>
+                </div>
+                
+                <div class="glass-panel" style="margin-bottom:1rem; padding:1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:0.875rem; color:var(--text-muted)">Assign selected to:</span>
+                    <select id="target-campaign" style="flex:1; max-width:300px; padding:0.75rem; border-radius:8px;">
+                        <option value="">Select campaign...</option>
+                    </select>
+                    <button style="background:var(--primary);" onclick="approveSelected()">Approve Selected</button>
+                    <button style="background:transparent; border:1px solid #ef4444; color:#ef4444; margin-left:auto;" onclick="rejectSelected()">🗑️ Reject Selected</button>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll()"></th>
+                                <th>ID</th>
+                                <th>Company</th>
+                                <th>Email</th>
+                                <th>URL</th>
+                                <th>Original Campaign</th>
+                                <th style="width: 50px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prospects-tbody">
+                            <tr><td colspan="8" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Approved Tab -->
+            <div id="tab-approved" class="hidden">
+                <div class="action-bar">
+                    <div>
+                        <h2 style="margin-bottom: 0.25rem;">Approved Leads</h2>
+                        <p style="color:var(--text-muted); font-size:0.875rem; margin: 0;">Waiting to be sent in the next campaign run.</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                        <div class="date-filter-group" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="date" id="approved-date-from" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <span style="color: var(--text-muted);">to</span>
+                            <input type="date" id="approved-date-to" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <button onclick="loadApproved()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem; border-radius: 4px; cursor: pointer;">🔍 Filter</button>
+                        </div>
+                        <div style="border-left: 1px solid var(--border); height: 24px; margin: 0 0.5rem;"></div>
+                        <button onclick="exportTableToCSV('approved-tbody', 'approved_prospects.csv')" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">📥 Export CSV</button>
+                        <button onclick="window.print()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Company</th>
+                                <th>Email</th>
+                                <th>Target Campaign</th>
+                                <th>Approval Reason</th>
+                                <th style="width: 80px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="approved-tbody">
+                            <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Rejected Tab -->
+            <div id="tab-rejected" class="hidden">
+                <div class="action-bar">
+                    <h2>Rejected Leads</h2>
+                    <p style="color:var(--text-muted); font-size:0.875rem;">These leads have been suppressed and will not be contacted or re-queued.</p>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Company</th>
+                                <th>Email</th>
+                                <th>URL</th>
+                                <th>Original Campaign</th>
+                                <th style="width: 80px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rejected-tbody">
+                            <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Campaign Sending Tab -->
+            <div id="tab-send" class="hidden">
+                <h2>Launch Outreach Campaign</h2>
+                <div class="glass-panel" style="margin-top:1rem; display:flex; flex-direction:column; gap:1rem;">
+                    <div>
+                        <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Select Campaign</label>
+                        <select id="send-campaign" style="width:100%; max-width:400px; padding:0.75rem; border-radius:8px;">
+                            <option value="">Loading campaigns...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Batch Limit</label>
+                        <input type="number" id="send-limit" value="20" min="1" max="50" style="width:100%; max-width:400px; padding:0.75rem; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:white;">
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Schedule Send (Optional)</label>
+                        <input type="datetime-local" id="send-schedule" style="width:100%; max-width:400px; padding:0.75rem; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:white;">
+                    </div>
+                    <div style="margin-top:1rem;">
+                        <button id="btn-send-campaign" style="background:#ef4444; padding:0.75rem 2rem; font-size:1rem;" onclick="sendCampaign()">🚀 SEND CAMPAIGN</button>
+                    </div>
+                </div>
+                
+                <div style="margin-top:2rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:flex-end;">
+                    <h3 style="margin:0;">Live SMTP Send Logs</h3>
+                    <button style="background:transparent; border:1px solid var(--accent); color:var(--accent); font-size:0.875rem; padding:0.25rem 0.75rem;" onclick="downloadLogs('send')">⬇️ Download Logs</button>
+                </div>
+                <div class="glass-panel" style="padding:1rem;">
+                    <pre id="send-logs-terminal" style="background:var(--bg-color); color:#10b981; padding:1rem; border-radius:8px; font-family:monospace; min-height:200px; max-height:400px; overflow-y:auto; margin:0; border:1px solid #334155; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                </div>
+            </div>
+
+            <!-- Quick Import & Send Tab -->
+            <div id="tab-quicksend" class="hidden">
+                <div class="action-bar">
+                    <h2>Address Book & Quick Send</h2>
+                </div>
+                
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <!-- Database Contacts (Paginated) -->
+                    <div class="glass-panel" style="flex: 2; min-width: 400px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div style="display:flex; align-items:center; gap: 1rem;">
+                                <h3 style="margin: 0; color: #10b981;">Database Contacts <span id="contacts-count" style="color:var(--text-muted); font-size:0.9rem; font-weight:normal; margin-left:0.5rem;">(0 total)</span></h3>
+                                <button id="btn-contacts-delete" style="display:none; background:transparent; border:1px solid #ef4444; color:#ef4444; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; cursor:pointer;" onclick="blacklistSelectedContacts()">🚫 Blacklist Selected</button>
+                            </div>
+                            
+                        </div>
+                        <p style="color:var(--text-muted); font-size:0.8rem; margin-top:-0.5rem; margin-bottom:1rem;">Select contacts from your address book to send immediately.</p>
+                        
+                        <div style="overflow-x: auto; max-height: 400px;">
+                            <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border);">
+                                        <th style="padding: 0.5rem; width: 40px;"><input type="checkbox" id="contacts-select-all" onchange="toggleAllContacts(this)"></th>
+                                        <th style="padding: 0.5rem;">Email</th>
+                                        <th style="padding: 0.5rem;">Company</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="contacts-tbody">
+                                    <tr><td colspan="3" style="text-align:center; padding: 1rem;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                            <button onclick="prevContactsPage()" style="background:transparent; border:1px solid var(--border); color:var(--text); padding:0.25rem 0.75rem; border-radius:4px; cursor:pointer;">&laquo; Prev</button>
+                            <span id="contacts-page-info" style="color:var(--text-muted); font-size:0.9rem;">Page 1</span>
+                            <button onclick="nextContactsPage()" style="background:transparent; border:1px solid var(--border); color:var(--text); padding:0.25rem 0.75rem; border-radius:4px; cursor:pointer;">Next &raquo;</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Column: Selected & Manual -->
+                    <div style="flex: 1; min-width: 300px; display:flex; flex-direction:column; gap:2rem;">
+                        
+                        <!-- Selected Contacts Box -->
+                        <div class="glass-panel" style="display:flex; flex-direction:column; gap:1rem;">
+                            <h3 style="margin: 0; color: #10b981;">Selected Contacts</h3>
+                            
+                            <div id="selected-contacts-box" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; min-height: 80px; max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; color: var(--text-muted);">
+                                <em>Nessuna email selezionata.</em>
+                            </div>
+                            
+                            <div>
+                                <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Target Campaign</label>
+                                <select id="contacts-campaign-select" style="width:100%; padding:0.75rem; border-radius:8px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                                    <option value="">Loading campaigns...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button id="btn-contacts-send" style="width: 100%; background:#ef4444; padding:0.75rem 2rem; font-size:1rem; font-weight:bold; color: white; border: none; border-radius: 8px; cursor: pointer; opacity: 0.5;" onclick="executeContactsSend(true)" disabled>🚀 SEND SELECTED NOW</button>
+                            </div>
+                        </div>
+
+                        <!-- Manual Paste Option -->
+                        <div class="glass-panel" style="display:flex; flex-direction:column; gap:1rem;">
+                            <h3 style="margin: 0;">Manual Quick Send</h3>
+                            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:-0.5rem;">Paste custom emails not in the DB to send immediately.</p>
+                            
+                            <div>
+                                <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Target Campaign</label>
+                                <select id="quick-send-campaign-select" style="width:100%; padding:0.75rem; border-radius:8px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                                    <option value="">Loading campaigns...</option>
+                                </select>
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size:0.875rem;">Leads (email, azienda - one per line)</label>
+                                <textarea id="quick-send-data" style="width:100%; height: 100%; min-height: 120px; padding:0.75rem; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:white; font-family:monospace;" placeholder="mario.rossi@azienda1.it, Azienda Uno Spa&#10;info@azienda2.com, Azienda Due Srl"></textarea>
+                            </div>
+                            <div>
+                                <button id="btn-quick-send-execute" style="width: 100%; background:#ef4444; padding:0.75rem 2rem; font-size:1rem; font-weight:bold; color: white; border: none; border-radius: 8px; cursor: pointer;" onclick="executeQuickSend()">🚀 PASTE & SEND NOW</button>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Templates Tab -->
+            <div id="tab-templates" class="hidden">
+                <div class="action-bar">
+                    <h2>Email Template Editor</h2>
+                    <button class="btn-success" onclick="newTemplate()">+ New Template</button>
+                </div>
+                
+                <div style="display:flex; gap:1.5rem; min-height:550px; margin-top:1rem;">
+                    <div class="glass-panel" style="width:250px; padding:1rem; overflow-y:auto; display:flex; flex-direction:column; gap:0.5rem;">
+                        <h3 style="font-size:0.875rem; color:var(--text-muted); margin-bottom:0.5rem; text-transform:uppercase;">Saved Templates</h3>
+                        <div id="template-list-sidebar" style="display:flex; flex-direction:column; gap:0.5rem;">
+                            <!-- Template buttons -->
+                        </div>
+                    </div>
+                    
+                    <div class="glass-panel" style="flex:1; display:flex; flex-direction:column; padding:1.5rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <input type="text" id="active-template-name" placeholder="Template Name (e.g. pitch.txt)" style="font-size:1.1rem; font-weight:bold; width:300px;" disabled>
+                            <div>
+                                <button style="background:transparent; border:1px solid #ef4444; color:#ef4444; margin-right:0.5rem;" onclick="deleteActiveTemplate()">🗑️ Delete</button>
+                                <button class="btn-success" onclick="saveActiveTemplate()">💾 Save Changes</button>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+                            <input type="text" id="ai-prompt-input" placeholder="What should this email be about? (e.g. A cold pitch for SEO services...)" style="flex:1; padding:0.75rem; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:white; border-radius:4px;" disabled>
+                            <button id="btn-generate-ai" style="background:#10b981; color:white; border:none; padding:0.75rem 1.5rem; border-radius:4px; font-weight:bold; cursor:not-allowed; opacity:0.5;" onclick="generateWithAi()" disabled>✨ Generate with AI</button>
+                        </div>
+                        <textarea id="active-template-content" style="flex:1; width:100%; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; color:white; padding:1rem; font-family:monospace; resize:none;" placeholder="Select a template or create a new one to start writing..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Archive Tab -->
+            <div id="tab-archive" class="hidden">
+                <div class="action-bar">
+                    <div>
+                        <h2 style="margin-bottom: 0.25rem;">Sent Email Archive <span id="archive-count" style="color:var(--text-muted); font-size:1rem; font-weight:normal; margin-left:1rem;">(0 total)</span></h2>
+                    </div>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                        <div class="date-filter-group" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="date" id="archive-date-from" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <span style="color: var(--text-muted);">to</span>
+                            <input type="date" id="archive-date-to" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text);">
+                            <button onclick="loadArchive()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem; border-radius: 4px; cursor: pointer;">🔍 Filter</button>
+                        </div>
+                        <div style="border-left: 1px solid var(--border); height: 24px; margin: 0 0.5rem;"></div>
+                        <button onclick="exportTableToCSV('archive-tbody', 'archive_prospects.csv')" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">📥 Export CSV</button>
+                        <button onclick="window.print()" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
+
+                        <button id="btn-requeue" class="btn-primary" style="display:none;" onclick="showRequeueModal()">✉️ Queue for Follow-up</button>
+                        <button id="btn-sync-imap" class="btn-success" style="background:#3b82f6;" onclick="syncImap()">🔄 Sync Inbox (IMAP)</button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="archive-select-all" onchange="toggleAllArchive(this)"></th>
+                                <th>Date (UTC)</th>
+                                <th>Recipient</th>
+                                <th>Campaign</th>
+                                <th>Email Content</th>
+                                <th>Status / Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archive-tbody">
+                            <tr><td colspan="4" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="tab-settings" class="hidden">
+                <div class="action-bar">
+                    <h2>System Settings</h2>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    
+                    <!-- SMTP Settings -->
+                    <div class="glass-panel" style="padding: 1.5rem;">
+                        <h3 style="margin-bottom: 1.5rem; color: var(--primary);">SMTP Configuration</h3>
+                        <form id="settings-form" onsubmit="saveSettings(event)">
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">SMTP Host</label>
+                                <input type="text" id="smtp-host" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">SMTP Port</label>
+                                <input type="number" id="smtp-port" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">SMTP Username</label>
+                                <input type="text" id="smtp-user" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">SMTP Password</label>
+                                <input type="password" id="smtp-pass" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">From Email</label>
+                                <input type="email" id="smtp-from" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            
+                            <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; color: var(--primary);">IMAP Configuration (Optional, for auto-tracking replies)</h4>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">IMAP Host</label>
+                                <input type="text" id="imap-host" placeholder="e.g. imap.example.com" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">IMAP Port</label>
+                                <input type="number" id="imap-port" placeholder="993" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                                <p style="font-size:0.75rem; color:var(--text-muted); margin-top:0.25rem;">(Uses SMTP Username and Password for IMAP login)</p>
+                            </div>
+                            
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Company Name</label>
+                                <input type="text" id="company-name" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1.5rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Company Website</label>
+                                <input type="text" id="company-website" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            
+                            <div style="display: flex; gap: 1rem;">
+                                <div style="flex:1;">
+                                    <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Daily Limit</label>
+                                    <input type="number" id="daily-limit" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Min Delay (s)</label>
+                                    <input type="number" id="delay-min" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Max Delay (s)</label>
+                                    <input type="number" id="delay-max" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                                </div>
+                            </div>
+                            
+                            <hr style="border-color: var(--border); margin: 2rem 0;">
+                            <h3 style="margin-bottom: 1.5rem; color: #10b981;">AI Template Generation</h3>
+                            
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">AI API Key</label>
+                                <input type="password" id="ai-api-key" placeholder="sk-..." style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">AI Base URL</label>
+                                <input type="text" id="ai-base-url" placeholder="https://api.openai.com/v1" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                                <small style="color:var(--text-muted); display:block; margin-top:0.25rem;">For Gemini: <code>https://generativelanguage.googleapis.com/v1beta/openai/</code></small>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">AI Model Name</label>
+                                <input type="text" id="ai-model" placeholder="gpt-4o or gemini-1.5-flash" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                            </div>
+                            
+                            <hr style="border-color: var(--border); margin: 2rem 0;">
+                            <h3 style="margin-bottom: 1.5rem; color: #f43f5e;">Data Enrichment</h3>
+                            
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Lusha API Key</label>
+                                <input type="password" id="lusha-api-key" placeholder="Lusha API Key" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;">
+                            </div>
+                            
+                            <br>
+                            <button type="submit" style="background:var(--primary); padding:0.75rem 2rem; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Save Settings</button>
+                        </form>
+                    </div>
+
+                    <!-- Change Password -->
+                    <div class="glass-panel" style="padding: 1.5rem; height: fit-content;">
+                        <h3 style="margin-bottom: 1.5rem; color: var(--accent);">Change Admin Password</h3>
+                        <form id="password-form" onsubmit="changePassword(event)">
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Current Password</label>
+                                <input type="password" id="old-pass" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <div style="margin-bottom: 1.5rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">New Password</label>
+                                <input type="password" id="new-pass" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <button type="submit" style="background:var(--accent); padding:0.75rem 2rem; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Update Password</button>
+                        </form>
+                        
+                        <hr style="border-color: var(--border); margin: 2rem 0;">
+                        
+                        <h3 style="margin-bottom: 1.5rem; color: #f59e0b;">Test SMTP Connection</h3>
+                        <form id="test-smtp-form" onsubmit="testSmtp(event)">
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Template to Test</label>
+                                <select id="test-template" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                                    <option value="">Loading templates...</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 1.5rem;">
+                                <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem;">Send Test Email To</label>
+                                <input type="email" id="test-email" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px;" required>
+                            </div>
+                            <button type="submit" id="test-smtp-btn" style="background:#f59e0b; padding:0.75rem 2rem; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer; width:100%;">Send Test Email</button>
+                        </form>
+                        <div style="margin-top: 1.5rem;">
+                            <label style="display:block; color:var(--text-muted); margin-bottom:0.5rem; font-size: 0.875rem;">SMTP Logs / Terminal</label>
+                            <div style="background: #000; border-radius: 4px; padding: 1rem; border: 1px solid #333; overflow-x: auto;">
+                                <pre id="smtp-log" style="color: #10b981; font-family: monospace; font-size: 0.8rem; margin: 0; white-space: pre-wrap; word-break: break-all;">Waiting for test...</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Requeue Modal -->
+    <div id="requeue-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
+        <div class="glass-panel" style="background:#1e1e1e; padding:2rem; max-width:400px; width:100%; text-align:center;">
+            <h3 style="margin-bottom:1rem; color:var(--text);">Queue for Follow-up</h3>
+            <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                Select the Campaign (Template) to use for the Follow-up.
+                Emails will be sent in the same thread as the original email.
+            </p>
+            <select id="requeue-campaign-select" style="width:100%; padding:0.75rem; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px; margin-bottom:1.5rem;">
+                <option value="">-- Select Campaign --</option>
+            </select>
+            <div style="display:flex; gap:0.5rem; justify-content:center; flex-wrap:wrap;">
+                <button onclick="closeRequeueModal()" style="background:transparent; border:1px solid var(--border); color:var(--text); padding:0.5rem 1rem; border-radius:4px; cursor:pointer;">Cancel</button>
+                <button onclick="executeRequeue(false)" class="btn-primary">Queue Only</button>
+                <button onclick="executeRequeue(true)" style="background:#ef4444; color:white; border:none; padding:0.5rem 1rem; border-radius:4px; font-weight:bold; cursor:pointer;">🚀 Queue & Send Now</button>
+            </div>
+        </div>
+    </div>
+
+    
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+--- static/app.js
++++ static/app.js
+@@ -21,6 +21,7 @@
+     const csvCampaignSelect = document.getElementById('csv-upload-campaign');
+     const manualCampaignSelect = document.getElementById('manual-lead-campaign');
+     const quickSendCampaignSelect = document.getElementById('quick-send-campaign-select');
++    const contactsCampaignSelect = document.getElementById('contacts-campaign-select');
+     
+     const currSelect = select ? select.value : '';
+     const currSend = sendCampaignSelect ? sendCampaignSelect.value : '';
+@@ -27,6 +28,7 @@
+     const currCsv = csvCampaignSelect ? csvCampaignSelect.value : '';
+     const currManual = manualCampaignSelect ? manualCampaignSelect.value : '';
+     const currQuickSend = quickSendCampaignSelect ? quickSendCampaignSelect.value : '';
++    const currContacts = contactsCampaignSelect ? contactsCampaignSelect.value : '';
+ 
+     if (select) select.innerHTML = '<option value="">Select campaign...</option>';
+     if (sendCampaignSelect) sendCampaignSelect.innerHTML = '<option value="">Select campaign...</option>';
+@@ -32,6 +34,7 @@
+     if (csvCampaignSelect) csvCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     if (manualCampaignSelect) manualCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     if (quickSendCampaignSelect) quickSendCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
++    if (contactsCampaignSelect) contactsCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     
+     data.campaigns.forEach(c => {
+         if (select) {
+@@ -72,6 +75,13 @@
+             optQuickSend.innerText = c;
+             quickSendCampaignSelect.appendChild(optQuickSend);
+         }
++
++        if (contactsCampaignSelect) {
++            const optContacts = document.createElement('option');
++            optContacts.value = c;
++            optContacts.innerText = c;
++            contactsCampaignSelect.appendChild(optContacts);
++        }
+     });
+ 
+     if (select && currSelect) select.value = currSelect;
+@@ -79,6 +89,7 @@
+     if (csvCampaignSelect && currCsv) csvCampaignSelect.value = currCsv;
+     if (manualCampaignSelect && currManual) manualCampaignSelect.value = currManual;
+     if (quickSendCampaignSelect && currQuickSend) quickSendCampaignSelect.value = currQuickSend;
++    if (contactsCampaignSelect && currContacts) contactsCampaignSelect.value = currContacts;
+ }
+ 
+ async function loadTemplates() {
+@@ -936,6 +947,7 @@
+     document.getElementById('tab-quicksend').classList.add('hidden');
+     document.getElementById('tab-templates').classList.add('hidden');
+     document.getElementById('tab-archive').classList.add('hidden');
++    document.getElementById('tab-contacts').classList.add('hidden');
+     document.getElementById('tab-settings').classList.add('hidden');
+     
+     const el = document.getElementById('tab-' + tabId);
+@@ -957,6 +969,7 @@
+     if (tabId === 'archive') loadArchive();
+     else if (tabId === 'pending') loadProspects();
+     else if (tabId === 'approved') loadApproved();
++    else if (tabId === 'contacts') loadContacts();
+     else if (tabId === 'rejected') loadRejected();
+     else if (tabId === 'campaigns') loadCampaignsTab();
+     else if (tabId === 'templates') loadTemplates();
+@@ -981,6 +994,7 @@
+     loadProspects().catch(e => console.error("Error loading prospects:", e));
+     loadApproved().catch(e => console.error("Error loading approved:", e));
+     loadRejected().catch(e => console.error("Error loading rejected:", e));
++    loadContacts().catch(e => console.error("Error loading contacts:", e));
+     loadArchive().catch(e => console.error("Error loading archive:", e));
+     loadTemplates().catch(e => console.error("Error loading templates:", e));
+     loadCampaignsTab().catch(e => console.error("Error loading campaigns:", e));

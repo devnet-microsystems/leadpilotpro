@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Databases and Local State
+*.sqlite3
+*.db
+*.csv
+*.jsonl
+
+# Debug and Logs
+debug_osint/
+debug_*/
+*.log
+.env
+
+# Templates
+templates/

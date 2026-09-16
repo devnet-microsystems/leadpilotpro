@@ -1,0 +1,684 @@
+#!/usr/bin/env python3
+"""Public OSINT Market Research Aggregator.
+Refactored for Multi-Engine Search and strict crawler budgeting.
+"""
+
+import os
+import sqlite3
+import logging
+import argparse
+import itertools
+from typing import List, Dict
+from datetime import datetime, timezone
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from playwright.sync_api import sync_playwright
+
+from osint_engine.models import UnifiedSearchResult, DiscoveredLead, QuerySpec, TargetContext, ProviderState, ProviderResult
+from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProvider, BraveProvider
+from osint_engine.crawler import CompanyCrawler
+from osint_engine.normalization import DomainClassifier
+from osint_engine.strategy import QueryStrategyEngine
+
+APP_NAME = "LeadPilotProOSINT"
+
+class LeadStore:
+    def __init__(self, database_path: Path):
+        self.connection = sqlite3.connect(database_path)
+        self.connection.execute("PRAGMA foreign_keys = ON;")
+        self._init_tables()
+        
+    def _init_tables(self):
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS query_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT,
+                target_key TEXT,
+                query_template TEXT,
+                query TEXT NOT NULL,
+                family TEXT NOT NULL,
+                round INTEGER,
+                provider TEXT NOT NULL,
+                raw_results INTEGER,
+                unique_domains INTEGER,
+                new_domains INTEGER,
+                emails_found INTEGER,
+                duration_ms INTEGER,
+                status TEXT DEFAULT 'SUCCESS',
+                provider_state TEXT DEFAULT '',
+                created_at TIMESTAMP
+            )
+        """)
+        
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS prospects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_email TEXT UNIQUE,
+                company_name TEXT,
+                target_url TEXT,
+                source_file TEXT,
+                status TEXT,
+                imported_at_utc TEXT,
+                email_confidence REAL,
+                confidence_type TEXT,
+                relevance_score INTEGER DEFAULT 0
+            )
+        """)
+        
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER,
+                source_type TEXT,
+                engine TEXT,
+                source_url TEXT,
+                query TEXT,
+                discovered_at TEXT,
+                query_run_id TEXT DEFAULT '',
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id)
+            )
+        """)
+        try:
+            self.connection.execute("ALTER TABLE query_runs ADD COLUMN target_key TEXT DEFAULT ''")
+            self.connection.execute("ALTER TABLE query_runs ADD COLUMN query_template TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+            
+        try:
+            self.connection.execute("ALTER TABLE prospect_sources ADD COLUMN query_run_id TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+            
+        self.connection.commit()
+
+    def _utc_now(self) -> str:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    def save_lead(self, lead: DiscoveredLead, query_run_id: str = "", campaign_id: int = None) -> bool:
+        cursor = self.connection.cursor()
+        
+        # Check if prospect exists
+        existing = cursor.execute(
+            "SELECT id FROM prospects WHERE business_email = ?",
+            (lead.email,)
+        ).fetchone()
+
+        if existing:
+            prospect_id = existing[0]
+            is_new = False
+            # Option to update campaign_id if we want, but usually it keeps original
+        else:
+            company_name = lead.company_name or lead.domain
+            
+            if campaign_id is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO prospects
+                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, research_campaign_id, why_matched)
+                    VALUES (?, ?, ?, 'OSINT MultiEngine', 'pending_review', ?, ?, ?, ?, ?, ?)
+                    """,
+                    (f"https://{lead.domain}", company_name, lead.email, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, campaign_id, getattr(lead, 'why_matched', ''))
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO prospects
+                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, why_matched)
+                    VALUES (?, ?, ?, 'OSINT MultiEngine', 'pending_review', ?, ?, ?, ?, ?)
+                    """,
+                    (f"https://{lead.domain}", company_name, lead.email, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, getattr(lead, 'why_matched', ''))
+                )
+                
+            prospect_id = cursor.lastrowid
+            is_new = True
+
+        # Always save source provenance
+        cursor.execute(
+            """
+            INSERT INTO prospect_sources
+            (prospect_id, source_type, engine, source_url, query, discovered_at, query_run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (prospect_id, lead.source_type, lead.engine, lead.source_url, lead.query, self._utc_now(), query_run_id)
+        )
+        self.connection.commit()
+        return is_new
+
+    def save_query_run(
+        self, 
+        run_id: str, 
+        target_key: str, 
+        query_template: str, 
+        query: str, 
+        family: str, 
+        round_num: int, 
+        provider: str, 
+        raw_results: int, 
+        unique_domains: int, 
+        new_domains: int, 
+        emails_found: int, 
+        duration_ms: int,
+        status: str = 'SUCCESS',
+        provider_state: str = '',
+        campaign_id: int = None,
+        template_id: int = None
+    ) -> int:
+        cursor = self.connection.cursor()
+        
+        if campaign_id is not None and template_id is not None:
+            cursor.execute(
+                """
+                INSERT INTO query_runs
+                (run_id, target_key, query_template, query, family, round, provider, raw_results, unique_domains, new_domains, emails_found, duration_ms, status, provider_state, created_at, campaign_id, template_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (run_id, target_key, query_template, query, family, round_num, provider, raw_results, unique_domains, new_domains, emails_found, duration_ms, status, provider_state, self._utc_now(), campaign_id, template_id)
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO query_runs
+                (run_id, target_key, query_template, query, family, round, provider, raw_results, unique_domains, new_domains, emails_found, duration_ms, status, provider_state, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (run_id, target_key, query_template, query, family, round_num, provider, raw_results, unique_domains, new_domains, emails_found, duration_ms, status, provider_state, self._utc_now())
+            )
+            
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_historical_strategies(self, target_key: str) -> Dict[str, dict]:
+        cursor = self.connection.cursor()
+        
+        query = """
+        SELECT 
+            r.provider,
+            r.family,
+            r.query_template,
+            COUNT(r.id) as query_count,
+            AVG(CAST(r.new_domains AS FLOAT) / CASE WHEN r.raw_results > 0 THEN r.raw_results ELSE 1 END) as domain_yield,
+            CAST(COUNT(DISTINCT s.prospect_id) AS FLOAT) / CASE WHEN COUNT(r.id) > 0 THEN COUNT(r.id) ELSE 1 END as lead_yield,
+            AVG(p.relevance_score) as avg_relevance
+        FROM query_runs r
+        LEFT JOIN prospect_sources s ON r.run_id = s.query_run_id
+        LEFT JOIN prospects p ON s.prospect_id = p.id
+        WHERE r.target_key = ? AND r.status IN ('SUCCESS', 'ZERO_RESULTS')
+        GROUP BY r.provider, r.family, r.query_template
+        """
+        
+        cursor.execute(query, (target_key,))
+        stats = {}
+        
+        for row in cursor.fetchall():
+            provider, family, template, query_count, domain_yield, total_leads, avg_relevance = row
+            
+            lead_yield = total_leads / query_count if query_count > 0 else 0
+            
+            # Normalize relevance (assuming max is 100)
+            quality_score = (avg_relevance or 0) / 100.0
+            
+            # Domain yield score (cap at 5 domains per query for normalization)
+            domain_yield_score = min(1.0, (domain_yield or 0) / 5.0)
+            
+            # Lead yield score (cap at 5 leads per query for normalization)
+            lead_yield_score = min(1.0, (lead_yield or 0) / 5.0)
+            
+            # Composite performance score (0 to 100)
+            performance_score = (0.50 * quality_score + 0.30 * lead_yield_score + 0.20 * domain_yield_score) * 100
+            
+            key = f"{provider}|{family}|{template}"
+            stats[key] = {
+                "query_count": query_count,
+                "domain_yield": domain_yield or 0,
+                "lead_yield": lead_yield,
+                "avg_relevance": avg_relevance or 0,
+                "performance_score": performance_score
+            }
+            
+        return stats
+
+    def close(self):
+        self.connection.close()
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Multi-engine OSINT Lead Discovery")
+    parser.add_argument("--database", default="outreach_queue.sqlite3")
+    parser.add_argument("--results-per-query", type=int, default=10)
+    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--headed", action="store_true")
+    
+    # Structured Mode
+    parser.add_argument("--role", default="")
+    parser.add_argument("--industry", default="")
+    parser.add_argument("--location", default="")
+    parser.add_argument("--country", default="")
+    
+    # LeadPilot 2.0 Campaign Mode
+    parser.add_argument("--campaign-id", type=int, default=None)
+    
+    # Legacy / Seed Mode
+    parser.add_argument("--queries", nargs="*", default=[])
+    parser.add_argument("--max-queries", type=int, default=0) # Legacy
+    
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s %(levelname)s %(message)s")
+    
+    database_path = Path(args.database).expanduser().resolve()
+    
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        conn.row_factory = sqlite3.Row
+        if args.queries:
+            raw_queries = args.queries
+        else:
+            if not any([args.role, args.industry, args.location, args.country, args.campaign_id]):
+                # If neither mode is used, read from DB
+                raw_queries = [row["query"] for row in conn.execute("SELECT query FROM research_queries").fetchall()]
+            else:
+                raw_queries = []
+    except Exception as exc:
+        logging.error(f"DB load error: {exc}")
+        return 2
+
+    if args.max_queries and raw_queries:
+        raw_queries = raw_queries[:args.max_queries]
+
+    providers = {
+        "BingProvider": BingProvider(),
+        "SearXNGProvider": SearXNGProvider(),
+        "BraveProvider": BraveProvider()
+    }
+    
+    active_providers = [p for p in providers.values() if p.enabled]
+    active_provider_names = [p.name for p in active_providers]
+    logging.info(f"Active providers: {active_provider_names}")
+
+    store = LeadStore(database_path)
+    # Ensure prospects table has relevance_score column if it didn't exist
+    try:
+        store.connection.execute("ALTER TABLE prospects ADD COLUMN relevance_score INTEGER DEFAULT 0")
+        store.connection.commit()
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
+        
+    target_ctx = TargetContext(
+        role=args.role or "",
+        industry=args.industry or "",
+        location=args.location or "",
+        country=args.country or ""
+    )
+    
+    historical_stats = store.get_historical_strategies(target_ctx.target_key)
+    
+    pregenerated_specs = None
+    if args.campaign_id:
+        c = conn.cursor()
+        c.row_factory = sqlite3.Row
+        c.execute("SELECT * FROM campaign_queries WHERE campaign_id=? AND is_enabled=1", (args.campaign_id,))
+        concrete_queries = [dict(r) for r in c.fetchall()]
+        
+        pregenerated_specs = []
+        for cq in concrete_queries:
+            for p in active_provider_names:
+                pregenerated_specs.append(QuerySpec(
+                    text=cq["query"],
+                    family=cq["family"],
+                    round=0,
+                    priority=cq["base_score"],
+                    template=str(cq["template_id"]),  # We store template_id in template field for now, to map it later
+                    provider_name=p
+                ))
+    
+    engine = QueryStrategyEngine(
+        target_ctx=target_ctx,
+        seed_queries=raw_queries,
+        active_providers=active_provider_names,
+        historical_stats=historical_stats,
+        pregenerated_specs=pregenerated_specs
+    )
+    
+    all_rounds = engine.generate_all_rounds()
+
+    store = LeadStore(database_path)
+    # Ensure prospects table has relevance_score column if it didn't exist
+    try:
+        store.connection.execute("ALTER TABLE prospects ADD COLUMN relevance_score INTEGER DEFAULT 0")
+        store.connection.commit()
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
+        
+    crawler = CompanyCrawler(
+        role=args.role,
+        industry=args.industry,
+        location=args.location,
+        campaign_id=args.campaign_id,
+        db_path=str(database_path)
+    )
+    
+    # Metrics Tracking
+    metrics = {
+        "raw_results": 0,
+        "unique_urls": set(),
+        "unique_domains": set(),
+        "blocked_domains": set(),
+        "crawled_pages": 0,
+        "emails_found": set(),
+        "unique_emails": set(),
+        "leads_inserted": 0,
+        "provider_stats": {},
+        "queries_executed": 0,
+        "quality_breakdown": {
+            "PERSONAL": 0,
+            "ROLE_BASED": 0,
+            "PERSONAL_EMAIL_PROVIDER": 0,
+            "SYSTEM": 0,
+            "INVALID": 0
+        },
+        "relevance_breakdown": {
+            "High": 0,
+            "Medium": 0,
+            "Low": 0
+        }
+    }
+    
+    for p in providers.values():
+        metrics["provider_stats"][p.name] = {"status": "OFF" if not p.enabled else "OK", "results": 0, "error": ""}
+
+    provider_failures = {p_name: 0 for p_name in providers.keys()}
+    provider_cooldown_until = {p_name: 0.0 for p_name in providers.keys()}
+    PROVIDER_MIN_DELAY = float(os.getenv("PROVIDER_MIN_DELAY", "2.0"))
+    PROVIDER_MAX_DELAY = float(os.getenv("PROVIDER_MAX_DELAY", "5.0"))
+
+    start_time = datetime.now()
+
+    MIN_NEW_DOMAINS = 1
+    MIN_NEW_EMAILS = 2
+    MIN_NEW_TARGET_PAGES = 2
+    MAX_ROUNDS = 4
+    MAX_TOTAL_QUERIES = args.max_queries if args.max_queries > 0 else 30
+    
+    global_domains_seen = set()
+    total_queries_executed = 0
+    run_batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    adaptive_report = []
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=not args.headed)
+        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        page = context.new_page()
+
+        for round_num in sorted(all_rounds.keys()):
+            if round_num > MAX_ROUNDS:
+                break
+                
+            round_specs = all_rounds[round_num]
+            if not round_specs:
+                continue
+                
+            round_specs = sorted(round_specs, key=lambda x: x.priority, reverse=True)
+            
+            round_raw_results = 0
+            round_unique_domains = set()
+            round_new_domains = 0
+            round_new_emails = 0
+            round_new_target_pages = 0
+            round_queries_executed = 0
+            
+            logging.info(f"\n--- [ROUND {round_num}] ---")
+            
+            for spec in round_specs:
+                if total_queries_executed >= MAX_TOTAL_QUERIES:
+                    logging.info("MAX_TOTAL_QUERIES reached, stopping round.")
+                    break
+                    
+                # Provider routing
+                provider = providers.get(spec.provider_name)
+                if not provider or not provider.enabled:
+                    logging.warning(f"Skipping {spec.text} - provider {spec.provider_name} not available")
+                    continue
+                    
+                import time
+                if time.time() < provider_cooldown_until.get(provider.name, 0):
+                    logging.warning(f"Skipping provider {provider.name} due to cooldown.")
+                    continue
+                    
+                logging.info(f"Executing: {spec.text} (Family: {spec.family}, Provider: {provider.name})")
+                adaptive_report.append({
+                    "strategy": f"{provider.name} / {spec.family} / {spec.template}",
+                    "samples": spec.samples,
+                    "score": spec.priority,
+                    "type": "EXPLORATION" if spec.is_exploration else "EXPLOITATION"
+                })
+                
+                total_queries_executed += 1
+                round_queries_executed += 1
+                
+                query_run_id = f"{run_batch_id}_{total_queries_executed}"
+                
+                import random
+                delay = random.uniform(PROVIDER_MIN_DELAY, PROVIDER_MAX_DELAY)
+                time.sleep(delay)
+                
+                all_results = []
+                query_start = datetime.now()
+                db_status = 'SUCCESS'
+                provider_state_str = ''
+                
+                try:
+                    adapted_query = provider.adapt_query(spec)
+                    provider_result = provider.search(query=adapted_query, limit=args.results_per_query, page=page, country=target_ctx.country)
+                    results = provider_result.results
+                    provider_state_str = provider_result.status.name
+                    
+                    if provider_result.status in (ProviderState.BLOCKED, ProviderState.RATE_LIMITED):
+                        logging.warning(f"  {provider.name} returned {provider_result.status.name}. Triggering cooldown.")
+                        provider_cooldown_until[provider.name] = time.time() + 300 # 5 min cooldown
+                        db_status = 'PROVIDER_FAILURE'
+                    elif provider_result.status in (ProviderState.DEGRADED, ProviderState.ERROR):
+                        provider_failures[provider.name] += 1
+                        logging.warning(f"  {provider.name} degraded ({provider_failures[provider.name]}/3 failures).")
+                        if provider_failures[provider.name] >= 3:
+                            logging.error(f"  {provider.name} reached max failures. Triggering cooldown.")
+                            provider_cooldown_until[provider.name] = time.time() + 300
+                            provider_failures[provider.name] = 0
+                        db_status = 'PROVIDER_FAILURE'
+                    elif provider_result.status == ProviderState.ZERO_RESULTS:
+                        provider_failures[provider.name] = 0
+                        db_status = 'ZERO_RESULTS'
+                    else:
+                        provider_failures[provider.name] = 0
+                        db_status = 'SUCCESS'
+                    
+                    if provider_result.error:
+                        metrics["provider_stats"][provider.name]["error"] = provider_result.error
+
+                    metrics["provider_stats"][provider.name]["results"] += len(results)
+                    all_results.extend(results)
+                    if results:
+                        logging.debug(f"  {provider.name}: {len(results)} results")
+                except Exception as e:
+                    metrics["provider_stats"][provider.name]["status"] = "FAIL"
+                    metrics["provider_stats"][provider.name]["error"] = str(e)
+                    logging.error(f"  {provider.name} failed: {e}")
+                    db_status = 'PROVIDER_FAILURE'
+                    provider_state_str = 'EXCEPTION'
+
+                metrics["raw_results"] += len(all_results)
+                round_raw_results += len(all_results)
+                
+                domain_map: Dict[str, UnifiedSearchResult] = {}
+                for res in all_results:
+                    metrics["unique_urls"].add(res.url)
+                    if DomainClassifier.is_allowed(res.domain):
+                        metrics["unique_domains"].add(res.domain)
+                        round_unique_domains.add(res.domain)
+                        if res.domain not in domain_map:
+                            domain_map[res.domain] = res
+                    else:
+                        metrics["blocked_domains"].add(res.domain)
+                        
+                unique_results = []
+                seen_urls_in_query = set()
+                for res in all_results:
+                    if res.url not in seen_urls_in_query:
+                        seen_urls_in_query.add(res.url)
+                        unique_results.append(res)
+                
+                query_new_domains = 0
+                query_new_emails = 0
+                query_new_target_pages = 0
+                
+                for res in unique_results:
+                    if not DomainClassifier.is_allowed(res.domain):
+                        continue
+                        
+                    if res.domain not in global_domains_seen:
+                        global_domains_seen.add(res.domain)
+                        round_new_domains += 1
+                        query_new_domains += 1
+                        
+                    if res.url not in crawler.visited_urls:
+                        round_new_target_pages += 1
+                        query_new_target_pages += 1
+                        
+                        leads = crawler.crawl(page, res.url, res.domain, res.engine, spec.text)
+                        
+                        for lead in leads:
+                            is_new = store.save_lead(lead, query_run_id=query_run_id, campaign_id=args.campaign_id)
+                            if is_new:
+                                query_new_emails += 1
+                                round_new_emails += 1
+                                metrics["leads_inserted"] += 1
+                                metrics["emails_found"].add(lead.email)
+                                metrics["unique_emails"].add(lead.email)
+                                
+                                metrics["quality_breakdown"][lead.confidence_type] = metrics["quality_breakdown"].get(lead.confidence_type, 0) + 1
+                                if lead.relevance_score >= 70:
+                                    metrics["relevance_breakdown"]["High"] += 1
+                                elif lead.relevance_score >= 40:
+                                    metrics["relevance_breakdown"]["Medium"] += 1
+                                else:
+                                    metrics["relevance_breakdown"]["Low"] += 1
+                                
+                logging.info(f"  > Unique domains: {len(domain_map)} | New domains: {query_new_domains}")
+                query_end = datetime.now()
+                duration_ms = int((query_end - query_start).total_seconds() * 1000)
+                
+                template_id_val = None
+                query_template_str = spec.template
+                if args.campaign_id and spec.template.isdigit():
+                    template_id_val = int(spec.template)
+                    query_template_str = "" # The UI can join with query_templates to get the string
+                
+                store.save_query_run(
+                    run_id=query_run_id,
+                    target_key=target_ctx.target_key,
+                    query_template=query_template_str,
+                    query=spec.text,
+                    family=spec.family,
+                    round_num=round_num,
+                    provider=provider.name,
+                    raw_results=len(all_results),
+                    unique_domains=len(domain_map),
+                    new_domains=query_new_domains,
+                    emails_found=query_new_emails,
+                    duration_ms=duration_ms,
+                    status=db_status,
+                    provider_state=provider_state_str,
+                    campaign_id=args.campaign_id,
+                    template_id=template_id_val
+                )
+                
+            if total_queries_executed >= MAX_TOTAL_QUERIES:
+                break
+                
+            if round_queries_executed > 0:
+                domain_yield_per_query = round_new_domains / round_queries_executed
+                email_yield_per_query = round_new_emails / round_queries_executed
+            else:
+                domain_yield_per_query = 0
+                email_yield_per_query = 0
+                
+            decision = "CONTINUE"
+            if round_new_domains < MIN_NEW_DOMAINS and round_new_emails < MIN_NEW_EMAILS and round_new_target_pages < MIN_NEW_TARGET_PAGES:
+                decision = "STOP (threshold met)"
+                
+            logging.info(f"Round {round_num} Summary:")
+            logging.info(f"Queries: {round_queries_executed}")
+            logging.info(f"Raw results: {round_raw_results}")
+            logging.info(f"Unique domains: {len(round_unique_domains)}")
+            logging.info(f"New domains: {round_new_domains}")
+            logging.info(f"New emails: {round_new_emails}")
+            logging.info(f"New target pages: {round_new_target_pages}")
+            logging.info(f"Domain yield/query: {domain_yield_per_query:.2f}")
+            logging.info(f"Email yield/query: {email_yield_per_query:.2f}")
+            logging.info(f"Decision: {decision}")
+            
+            if "STOP" in decision:
+                break
+
+        browser.close()
+        
+    metrics["crawled_pages"] = crawler.pages_crawled_this_run
+    metrics["queries_executed"] = total_queries_executed
+    elapsed = (datetime.now() - start_time).total_seconds()
+        
+    store.close()
+    if conn:
+        conn.close()
+
+    logging.info("\n" + "="*40)
+    logging.info("FINAL METRICS REPORT")
+    logging.info("="*40)
+    logging.info("Providers:")
+    for p_name, p_stat in metrics["provider_stats"].items():
+        if p_stat["status"] == "FAIL":
+            logging.info(f"  {p_name:15} {p_stat['status']:4} {p_stat['error']}")
+        else:
+            logging.info(f"  {p_name:15} {p_stat['status']:4} {p_stat['results']} results")
+            
+    logging.info("\nAdaptive Strategy Report:")
+    logging.info(f"Target: {target_ctx.target_key}")
+    exploration_count = 0
+    exploitation_count = 0
+    for rep in adaptive_report:
+        if rep['type'] == 'EXPLORATION':
+            exploration_count += 1
+        else:
+            exploitation_count += 1
+        score_source = "HISTORY" if rep['type'] == 'EXPLOITATION' else "PRIOR"
+        logging.info(f"  {rep['strategy']:<55} | Samples: {rep['samples']:>3} | Score: {rep['score']:>6.2f} ({score_source:<7}) | {rep['type']}")
+    logging.info(f"Exploration: {exploration_count} queries")
+    logging.info(f"Exploitation: {exploitation_count} queries")
+            
+    logging.info(f"\nQueries Executed:   {metrics['queries_executed']}")
+    logging.info(f"Raw results:        {metrics['raw_results']}")
+    logging.info(f"Unique URLs:        {len(metrics['unique_urls'])}")
+    logging.info(f"Unique domains:     {len(metrics['unique_domains'])}")
+    logging.info(f"Blocked domains:    {len(metrics['blocked_domains'])}")
+    logging.info(f"Crawled pages:      {crawler.pages_crawled_this_run}")
+    logging.info(f"Unique emails:      {len(metrics['unique_emails'])}")
+    logging.info(f"Leads inserted:     {metrics['leads_inserted']}")
+    logging.info(f"Elapsed time:       {(datetime.now() - start_time).total_seconds():.2f}s")
+    
+    logging.info("\nLead Quality Breakdown:")
+    logging.info(f"  Personal contacts:       {metrics['quality_breakdown'].get('PERSONAL', 0)}")
+    logging.info(f"  Role-based:              {metrics['quality_breakdown'].get('ROLE_BASED', 0)}")
+    logging.info(f"  Personal email provider: {metrics['quality_breakdown'].get('PERSONAL_EMAIL_PROVIDER', 0)}")
+    logging.info(f"  System/Invalid:          {metrics['quality_breakdown'].get('SYSTEM', 0) + metrics['quality_breakdown'].get('INVALID', 0)}")
+    
+    logging.info("\nRelevance:")
+    logging.info(f"  High (>= 70): {metrics['relevance_breakdown']['High']}")
+    logging.info(f"  Medium (40-69): {metrics['relevance_breakdown']['Medium']}")
+    logging.info(f"  Low (< 40): {metrics['relevance_breakdown']['Low']}")
+    
+    logging.info("========================================\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

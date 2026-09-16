@@ -1,0 +1,27 @@
+cd "$HOME/Downloads/public_business_lead_collector 3"
+
+# Verifica che Python Homebrew Apple Silicon esista
+/opt/homebrew/bin/python3 --version
+/opt/homebrew/bin/python3 -c "import platform; print('Architecture:', platform.machine())"
+
+# Ricrea il virtual environment con Python 3
+rm -rf .venv
+/opt/homebrew/bin/python3 -m venv .venv
+source .venv/bin/activate
+
+# Questi comandi devono mostrare .venv/bin/python e Python 3.x
+which python
+which pip
+python --version
+python -m pip --version
+
+# Installa le dipendenze nel virtual environment, non globalmente
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+
+# Test finale senza ricerca web e senza invio email
+python -m py_compile public_osint_market_research.py outreach_sender.py public_business_lead_collector.py
+bash -n run_growth_pipeline.command
+python -c "from playwright.sync_api import sync_playwright; print('Playwright OK')"
+

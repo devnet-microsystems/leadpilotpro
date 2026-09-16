@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadPilot Pro 2.0</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-green { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+        .badge-red { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .badge-blue { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; border-bottom: 1px solid var(--border); margin-bottom: 0;">
+        <div style="padding-bottom: 1rem;">
+            <h1 style="margin: 0;">LeadPilot Pro</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 0;">Adaptive Campaign Engine</p>
+        </div>
+        
+        <div class="tabs" style="flex: 1; border-bottom: none; margin-bottom: 0; justify-content: center; padding-bottom: 0; overflow: visible; white-space: nowrap;">
+            <div class="tab active" onclick="switchTab('overview')">Dashboard</div>
+            <div class="tab" onclick="switchTab('campaigns')">Campaigns</div>
+            <div class="tab" onclick="switchTab('query_studio')">Query Studio</div>
+            <div class="tab" onclick="switchTab('leads')">Leads</div>
+            <div class="tab" onclick="switchTab('companies')">Companies</div>
+            <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+            
+            <div class="dropdown">
+                <div class="tab" onclick="switchTab('providers')">System ▾</div>
+                <div class="dropdown-content">
+                    <div class="tab" onclick="switchTab('providers')">Providers</div>
+                    <div class="tab" onclick="switchTab('settings')">Settings</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding-bottom: 1rem;">
+            <button onclick="logout()" style="background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Logout</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Dashboard Tab -->
+        <div id="tab-overview">
+            <div class="action-bar">
+                <h2>Dashboard Overview</h2>
+            </div>
+            
+            <div class="stats-grid" style="margin-bottom: 2rem; grid-template-columns: repeat(6, 1fr);">
+                <div class="glass-panel stat-card">
+                    <h3>Campaigns</h3>
+                    <div class="value" id="stat-campaigns">0</div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <h3>Queries Gen.</h3>
+                    <div class="value" style="color: var(--primary)" id="stat-queries-gen">0</div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <h3>Queries Exec.</h3>
+                    <div class="value" style="color: var(--accent)" id="stat-queries-exec">0</div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <h3>Leads Found</h3>
+                    <div class="value" id="stat-leads">0</div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <h3>Qualified</h3>
+                    <div class="value" style="color: #f59e0b" id="stat-qualified">0</div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <h3>Yield</h3>
+                    <div class="value" style="color: #10b981" id="stat-yield">0%</div>
+                </div>
+            </div>
+
+            <div class="glass-panel" style="padding: 1.5rem; height: 400px; display: flex; align-items: center; justify-content: center;">
+                <canvas id="sentChart" style="max-height: 100%;"></canvas>
+            </div>
+        </div>
+
+        <!-- Campaigns Tab -->
+        <div id="tab-campaigns" class="hidden">
+            <div class="action-bar">
+                <h2>Research Campaigns</h2>
+                <button class="btn-success" onclick="document.getElementById('new-campaign-modal').style.display='flex'">+ New Campaign</button>
+            </div>
+            
+            <div style="display:flex; gap:2rem; margin-bottom: 2rem; flex-wrap: wrap;">
+                <div class="glass-panel" style="flex:1; min-width: 400px;">
+                    <h3>Sales Offers</h3>
+                    <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                        <input type="text" id="new-offer-name" placeholder="Offer Name (e.g. NextJS MVP)" style="flex:1;">
+                        <input type="text" id="new-offer-desc" placeholder="Description..." style="flex:2;">
+                        <button onclick="createOffer()">Add</button>
+                    </div>
+                    <table style="margin-top: 1rem;">
+                        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+                        <tbody id="offers-tbody"><tr><td colspan="2">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+                
+                <div class="glass-panel" style="flex:1; min-width: 400px;">
+                    <h3>Ideal Customer Profiles (ICP)</h3>
+                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="new-icp-name" placeholder="ICP Name" style="flex:1;">
+                            <input type="text" id="new-icp-roles" placeholder="Roles (CTO, CEO)" style="flex:1;">
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="new-icp-industries" placeholder="Industries" style="flex:1;">
+                            <input type="text" id="new-icp-locations" placeholder="Locations" style="flex:1;">
+                            <button onclick="createICP()">Add ICP</button>
+                        </div>
+                    </div>
+                    <table style="margin-top: 1rem;">
+                        <thead><tr><th>ICP Name</th><th>Target Details</th></tr></thead>
+                        <tbody id="icps-tbody"><tr><td colspan="2">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <h3>Active Campaigns</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Campaign Name</th>
+                            <th>Offer</th>
+                            <th>ICP</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="campaigns-tbody">
+                        <tr><td colspan="6" style="text-align:center;">Loading campaigns...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Query Studio Tab -->
+        <div id="tab-query_studio" class="hidden">
+            <div class="action-bar">
+                <h2>Query Studio</h2>
+                <div style="display:flex; gap:1rem; align-items:center;">
+                    <select id="qs-campaign-select" style="min-width:200px; padding:0.5rem; border-radius:4px;" onchange="loadQueryStudio()">
+                        <option value="">Select Campaign...</option>
+                    </select>
+                    <button class="btn-success" onclick="launchCampaignQueries()" id="btn-launch-campaign" disabled>🚀 Launch Campaign</button>
+                </div>
+            </div>
+            
+            <div class="glass-panel">
+                <div style="display:flex; justify-content:space-between; margin-bottom:1rem; align-items:center;">
+                    <h3 style="margin:0;">Search Plan Review</h3>
+                    <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">Review and tune the generated queries before launching.</p>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">Active</th>
+                                <th>Query Family</th>
+                                <th>Target Search Query</th>
+                                <th>Target Key</th>
+                            </tr>
+                        </thead>
+                        <tbody id="qs-queries-tbody">
+                            <tr><td colspan="4" style="text-align:center;">Select a campaign to view queries.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leads Tab -->
+        <div id="tab-leads" class="hidden">
+            <div class="action-bar">
+                <h2>Qualified Leads</h2>
+                <button onclick="loadProspects()">Refresh</button>
+            </div>
+            <div class="glass-panel">
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Score</th>
+                                <th>Email</th>
+                                <th>Person</th>
+                                <th>Role</th>
+                                <th>Company</th>
+                                <th>Why Relevant</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leads-tbody">
+                            <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Companies Tab -->
+        <div id="tab-companies" class="hidden">
+            <div class="action-bar">
+                <h2>Company Rollup</h2>
+                <button onclick="loadCompanies()">Refresh</button>
+            </div>
+            <div class="glass-panel">
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Domain</th>
+                                <th>Total Leads</th>
+                                <th>Qualified</th>
+                                <th>Best Score</th>
+                                <th>Last Discovered</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companies-tbody">
+                            <tr><td colspan="7" style="text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="tab-analytics" class="hidden">
+            <div class="action-bar">
+                <h2>Analytics & Yield</h2>
+            </div>
+            <div class="glass-panel" style="text-align:center; padding: 3rem;">
+                <h3 style="color:var(--text-muted);">Analytics Module Coming Soon</h3>
+                <p>Track your campaign yield and search provider effectiveness here.</p>
+            </div>
+        </div>
+
+        <!-- Providers Tab -->
+        <div id="tab-providers" class="hidden">
+            <div class="action-bar">
+                <h2>Search Providers</h2>
+            </div>
+            <div class="glass-panel">
+                <p style="color:var(--text-muted);">Configure which OSINT engines to use for discovery.</p>
+                <!-- Add provider toggles here later -->
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tab-settings" class="hidden">
+            <div class="action-bar">
+                <h2>System Settings</h2>
+                <button class="btn-success" onclick="saveSettings()">Save Configuration</button>
+            </div>
+            <div class="glass-panel">
+                <h3>OpenAI API</h3>
+                <input type="password" id="setting-ai-key" placeholder="sk-..." style="width:100%; margin: 1rem 0;">
+                <p style="color:var(--text-muted); font-size:0.8rem;">(More settings can be added here)</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modals -->
+    <div id="new-campaign-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+        <div class="glass-panel" style="width:500px; padding:2rem; max-width:90%;">
+            <h2 style="margin-top:0;">Create Research Campaign</h2>
+            
+            <label style="display:block; margin-top:1rem; color:var(--text-muted);">Campaign Name</label>
+            <input type="text" id="new-campaign-name-input" placeholder="e.g. Q4 WebAuthn Push" style="width:100%; margin-bottom:1rem;">
+            
+            <label style="display:block; margin-top:1rem; color:var(--text-muted);">Select Sales Offer</label>
+            <select id="new-campaign-offer" style="width:100%; margin-bottom:1rem; padding:0.5rem; border-radius:4px;"></select>
+            
+            <label style="display:block; margin-top:1rem; color:var(--text-muted);">Select ICP</label>
+            <select id="new-campaign-icp" style="width:100%; margin-bottom:1rem; padding:0.5rem; border-radius:4px;"></select>
+            
+            <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
+                <button onclick="document.getElementById('new-campaign-modal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text);">Cancel</button>
+                <button onclick="createResearchCampaign()" style="background:var(--primary);">Generate Search Plan</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="company-detail-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+        <div class="glass-panel" style="width:800px; max-height:80vh; overflow-y:auto; padding:2rem; max-width:95%;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <h2 style="margin-top:0;" id="modal-company-name">Company Name</h2>
+                <button onclick="document.getElementById('company-detail-modal').style.display='none'" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5rem; line-height:1; cursor:pointer;">&times;</button>
+            </div>
+            <p style="color:var(--primary); margin-top:-0.5rem; margin-bottom:1.5rem;" id="modal-company-domain">domain.com</p>
+            
+            <h3>Discovered Leads</h3>
+            <table style="margin-top:1rem;">
+                <thead>
+                    <tr>
+                        <th>Score</th>
+                        <th>Email</th>
+                        <th>Person & Role</th>
+                        <th>Why Relevant</th>
+                    </tr>
+                </thead>
+                <tbody id="modal-company-leads-tbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

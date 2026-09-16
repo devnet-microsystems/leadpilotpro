@@ -1,0 +1,483 @@
+--- static/app.js.orig	2026-09-13 22:20:30
++++ static/app.js	2026-09-16 21:46:40
+@@ -21,6 +21,7 @@
+     const csvCampaignSelect = document.getElementById('csv-upload-campaign');
+     const manualCampaignSelect = document.getElementById('manual-lead-campaign');
+     const quickSendCampaignSelect = document.getElementById('quick-send-campaign-select');
++    const contactsCampaignSelect = document.getElementById('contacts-campaign-select');
+     
+     const currSelect = select ? select.value : '';
+     const currSend = sendCampaignSelect ? sendCampaignSelect.value : '';
+@@ -28,6 +29,7 @@
+     const currCsv = csvCampaignSelect ? csvCampaignSelect.value : '';
+     const currManual = manualCampaignSelect ? manualCampaignSelect.value : '';
+     const currQuickSend = quickSendCampaignSelect ? quickSendCampaignSelect.value : '';
++    const currContacts = contactsCampaignSelect ? contactsCampaignSelect.value : '';
+ 
+     if (select) select.innerHTML = '<option value="">Select campaign...</option>';
+     if (sendCampaignSelect) sendCampaignSelect.innerHTML = '<option value="">Select campaign...</option>';
+@@ -35,6 +37,7 @@
+     if (csvCampaignSelect) csvCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     if (manualCampaignSelect) manualCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     if (quickSendCampaignSelect) quickSendCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
++    if (contactsCampaignSelect) contactsCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+     
+     data.campaigns.forEach(c => {
+         if (select) {
+@@ -78,6 +81,13 @@
+             optQuickSend.innerText = c;
+             quickSendCampaignSelect.appendChild(optQuickSend);
+         }
++
++        if (contactsCampaignSelect) {
++            const optContacts = document.createElement('option');
++            optContacts.value = c;
++            optContacts.innerText = c;
++            contactsCampaignSelect.appendChild(optContacts);
++        }
+     });
+ 
+     if (select && currSelect) select.value = currSelect;
+@@ -86,6 +96,7 @@
+     if (csvCampaignSelect && currCsv) csvCampaignSelect.value = currCsv;
+     if (manualCampaignSelect && currManual) manualCampaignSelect.value = currManual;
+     if (quickSendCampaignSelect && currQuickSend) quickSendCampaignSelect.value = currQuickSend;
++    if (contactsCampaignSelect && currContacts) contactsCampaignSelect.value = currContacts;
+ }
+ 
+ async function loadTemplates() {
+@@ -932,19 +943,14 @@
+     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+     document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+     
+-    document.getElementById('tab-overview').classList.add('hidden');
+-    document.getElementById('tab-research').classList.add('hidden');
+-    document.getElementById('tab-campaigns').classList.add('hidden');
+-    document.getElementById('tab-pending').classList.add('hidden');
+-    document.getElementById('tab-approved').classList.add('hidden');
+-    document.getElementById('tab-rejected').classList.add('hidden');
+-    document.getElementById('tab-send').classList.add('hidden');
+-    document.getElementById('tab-quicksend').classList.add('hidden');
+-    document.getElementById('tab-templates').classList.add('hidden');
+-    document.getElementById('tab-archive').classList.add('hidden');
+-    document.getElementById('tab-settings').classList.add('hidden');
++    const allTabs = ['overview', 'research', 'campaigns', 'pending', 'approved', 'rejected', 'send', 'quicksend', 'templates', 'archive', 'settings', 'research_campaigns', 'query_studio', 'leads', 'companies', 'analytics', 'providers'];
++    allTabs.forEach(t => {
++        const el = document.getElementById(`tab-${t}`);
++        if (el) el.classList.add('hidden');
++    });
+     
+-    document.getElementById(`tab-${tabId}`).classList.remove('hidden');
++    const target = document.getElementById(`tab-${tabId}`);
++    if (target) target.classList.remove('hidden');
+     
+     if (tabId === 'research') {
+         fetchLushaCredits();
+@@ -966,6 +972,7 @@
+     if (tabId === 'archive') loadArchive();
+     else if (tabId === 'pending') loadProspects();
+     else if (tabId === 'approved') loadApproved();
++    else if (tabId === 'quicksend') loadContacts();
+     else if (tabId === 'rejected') loadRejected();
+     else if (tabId === 'campaigns') loadCampaignsTab();
+     else if (tabId === 'templates') loadTemplates();
+@@ -986,6 +993,7 @@
+     loadProspects().catch(e => console.error("Error loading prospects:", e));
+     loadApproved().catch(e => console.error("Error loading approved:", e));
+     loadRejected().catch(e => console.error("Error loading rejected:", e));
++    loadContacts().catch(e => console.error("Error loading contacts:", e));
+     loadArchive().catch(e => console.error("Error loading archive:", e));
+     loadTemplates().catch(e => console.error("Error loading templates:", e));
+     loadCampaignsTab().catch(e => console.error("Error loading campaigns:", e));
+@@ -1539,5 +1547,391 @@
+     } finally {
+         btn.disabled = false;
+         btn.textContent = "🚀 IMPORT & SEND NOW";
++    }
++}
++
++// -- Contacts Hub Functions --
++let allContactsData = [];
++let currentContactsPage = 1;
++const CONTACTS_PER_PAGE = 50;
++
++async function loadContacts() {
++    try {
++        let url = '/api/contacts?t=' + Date.now();
++        const res = await fetch(url);
++        const data = await res.json();
++        if (Array.isArray(data)) {
++            allContactsData = data;
++        } else {
++            allContactsData = [];
++            console.error("API did not return an array:", data);
++        }
++    } catch (e) {
++        console.error("Failed to load contacts:", e);
++        allContactsData = [];
++    }
++    
++    document.getElementById('contacts-count').innerText = `(${allContactsData.length} total)`;
++    currentContactsPage = 1;
++    renderContactsPage();
++}
++
++function renderContactsPage() {
++    const tbody = document.getElementById('contacts-tbody');
++    tbody.innerHTML = '';
++    
++    if (allContactsData.length === 0) {
++        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No contacts found.</td></tr>';
++        document.getElementById('btn-contacts-send').style.display = 'none';
++        document.getElementById('contacts-page-info').innerText = 'Page 1 of 1';
++        return;
++    }
++    
++    const totalPages = Math.ceil(allContactsData.length / CONTACTS_PER_PAGE) || 1;
++    if (currentContactsPage > totalPages) currentContactsPage = totalPages;
++    if (currentContactsPage < 1) currentContactsPage = 1;
++    
++    document.getElementById('contacts-page-info').innerText = `Page ${currentContactsPage} of ${totalPages}`;
++    
++    const startIdx = (currentContactsPage - 1) * CONTACTS_PER_PAGE;
++    const endIdx = startIdx + CONTACTS_PER_PAGE;
++    const pageData = allContactsData.slice(startIdx, endIdx);
++    
++    // Clear select all if paginated
++    const selectAllCb = document.getElementById('contacts-select-all');
++    if (selectAllCb) selectAllCb.checked = false;
++    
++    pageData.forEach(row => {
++        const tr = document.createElement('tr');
++        const safeEmail = escapeHtml(row.business_email);
++        const safeCompany = escapeHtml(row.company_name);
++        tr.innerHTML = `
++            <td style="padding:0.5rem;"><input type="checkbox" class="contacts-checkbox" data-email="${safeEmail}" data-company="${safeCompany}" onchange="toggleContactSelect()"></td>
++            <td style="padding:0.5rem;">${safeEmail}</td>
++            <td style="padding:0.5rem;">
++                <input type="text" value="${safeCompany}" 
++                       style="background: transparent; border: 1px solid transparent; color: white; width: 100%; border-radius: 4px; padding: 0.25rem; font-family: inherit; font-size: inherit;"
++                       onfocus="this.style.border='1px solid var(--primary)'"
++                       onblur="updateContactCompany('${safeEmail}', this.value); this.style.border='1px solid transparent'"
++                       title="Click to edit">
++            </td>
++        `;
++        tbody.appendChild(tr);
++    });
++    toggleContactSelect();
++}
++
++
++async function updateContactCompany(email, newCompany) {
++    const c = allContactsData.find(x => x.business_email === email);
++    if (c && c.company_name !== newCompany) {
++        c.company_name = newCompany;
++        const cb = document.querySelector(`.contacts-checkbox[data-email="${email}"]`);
++        if (cb) cb.dataset.company = newCompany;
++        
++        try {
++            const res = await fetch('/api/contacts/update_company', {
++                method: 'POST',
++                headers: { 'Content-Type': 'application/json' },
++                body: JSON.stringify({ email: email, company: newCompany })
++            });
++            if (!res.ok) {
++                console.error("Failed to update company");
++            }
++        } catch (e) {
++            console.error("Network error updating company", e);
++        }
++    }
++}
++
++
++async function blacklistSelectedContacts() {
++    const checkboxes = document.querySelectorAll('.contacts-checkbox:checked');
++    const emails = Array.from(checkboxes).map(cb => cb.dataset.email);
++    
++    if (emails.length === 0) return;
++    
++    if (!confirm(`Sei sicuro di voler INSERIRE IN BLACKLIST ${emails.length} contatti? Non verranno più mostrati nella rubrica e non potranno essere ricontattati.`)) return;
++    
++    try {
++        const res = await fetch('/api/contacts/blacklist', {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/json' },
++            body: JSON.stringify({ emails: emails })
++        });
++        const data = await res.json();
++        
++        if (res.ok && data.success) {
++            alert(`Inseriti in blacklist ${emails.length} contatti.`);
++            document.getElementById('contacts-select-all').checked = false;
++            loadContacts();
++            loadRejected(); // Aggiorna anche la tab rejected in background
++        } else {
++            alert(data.error || "Errore durante l'operazione.");
++        }
++    } catch (e) {
++        alert("Errore di rete.");
++        console.error(e);
++    }
++}
++
++function prevContactsPage() {
++    if (currentContactsPage > 1) {
++        currentContactsPage--;
++        renderContactsPage();
++    }
++}
++
++function nextContactsPage() {
++    const totalPages = Math.ceil(allContactsData.length / CONTACTS_PER_PAGE);
++    if (currentContactsPage < totalPages) {
++        currentContactsPage++;
++        renderContactsPage();
++    }
++}
++
++function toggleAllContacts(source) {
++    const checkboxes = document.querySelectorAll('.contacts-checkbox');
++    checkboxes.forEach(cb => cb.checked = source.checked);
++    toggleContactSelect();
++}
++
++// Track globally selected contacts across pagination (Optional, but let's just do current page for now since that's what was working)
++function toggleContactSelect() {
++    const checkboxes = document.querySelectorAll('.contacts-checkbox:checked');
++    const btn = document.getElementById('btn-contacts-send');
++    const box = document.getElementById('selected-contacts-box');
++    const btnDelete = document.getElementById('btn-contacts-delete');
++    
++    if (checkboxes.length > 0) {
++        if (btnDelete) btnDelete.style.display = 'block';
++        if (btn) {
++            btn.disabled = false;
++            btn.style.opacity = '1';
++            btn.innerText = `🚀 SEND ${checkboxes.length} SELECTED NOW`;
++        }
++        if (box) {
++            box.innerHTML = '';
++            checkboxes.forEach(cb => {
++                const div = document.createElement('div');
++                div.textContent = `${cb.dataset.email} (${cb.dataset.company})`;
++                box.appendChild(div);
++            });
++        }
++    } else {
++        if (btnDelete) btnDelete.style.display = 'none';
++        if (btn) {
++            btn.disabled = true;
++            btn.style.opacity = '0.5';
++            btn.innerText = `🚀 SEND SELECTED NOW`;
++        }
++        if (box) {
++            box.innerHTML = '<em>Nessuna email selezionata.</em>';
++        }
+     }
+ }
++
++
++
++async function executeContactsSend(sendNow = true) {
++    const select = document.getElementById('contacts-campaign-select');
++    const campaignName = select.value;
++    
++    if (!campaignName) {
++        alert("Please select a campaign.");
++        return;
++    }
++    
++    const checkboxes = document.querySelectorAll('.contacts-checkbox:checked');
++    const leads = Array.from(checkboxes).map(cb => {
++        return { email: cb.dataset.email, company: cb.dataset.company };
++    });
++    
++    if (leads.length === 0) return;
++    
++    if (!confirm(`Vuoi importare ${leads.length} leads univoci e avviare immediatamente l'invio per la campagna '${campaignName}'?`)) {
++        return;
++    }
++    
++    // We can reuse the quick_send API which perfectly fits this use-case (imports to approved + starts send)
++    try {
++        const res = await fetch('/api/quick_send', {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/json' },
++            body: JSON.stringify({ campaign: campaignName, leads: leads, limit: leads.length })
++        });
++        const data = await res.json();
++        
++        if (res.ok && data.success) {
++            alert(data.message);
++            toggleContactSelect();
++            document.getElementById('contacts-select-all').checked = false;
++            switchTab('send');
++        } else {
++            alert(data.error || data.detail || "Si è verificato un errore.");
++        }
++    } catch (e) {
++        alert("Errore di rete o server.");
++        console.error(e);
++    }
++}
++
++// --- LeadPilot 2.0 Campaign Management ---
++
++async function loadOffers() {
++    const res = await fetch('/api/sales_offers');
++    const data = await res.json();
++    const list = document.getElementById('offers-list');
++    const select = document.getElementById('new-campaign-offer');
++    if (!list || !select) return;
++    list.innerHTML = '';
++    select.innerHTML = '<option value="">Select an Offer...</option>';
++    data.forEach(o => {
++        list.innerHTML += `<li style="margin-bottom:0.5rem; background:var(--bg-input); padding:0.5rem; border-radius:4px;"><strong>${o.name}</strong><br><small>${o.description}</small></li>`;
++        select.innerHTML += `<option value="${o.id}">${o.name}</option>`;
++    });
++}
++
++async function loadICPs() {
++    const res = await fetch('/api/icps');
++    const data = await res.json();
++    const list = document.getElementById('icps-list');
++    const select = document.getElementById('new-campaign-icp');
++    if (!list || !select) return;
++    list.innerHTML = '';
++    select.innerHTML = '<option value="">Select an ICP...</option>';
++    data.forEach(i => {
++        list.innerHTML += `<li style="margin-bottom:0.5rem; background:var(--bg-input); padding:0.5rem; border-radius:4px;"><strong>${i.name}</strong><br><small>${i.roles} | ${i.industries} | ${i.locations}</small></li>`;
++        select.innerHTML += `<option value="${i.id}">${i.name}</option>`;
++    });
++}
++
++async function loadResearchCampaigns() {
++    const res = await fetch('/api/research_campaigns');
++    const data = await res.json();
++    const list = document.getElementById('campaigns-list');
++    if (!list) return;
++    if (data.length === 0) {
++        list.innerHTML = '<p style="color:var(--text-muted);">No campaigns yet. Create an Offer and an ICP to start.</p>';
++        return;
++    }
++    list.innerHTML = '';
++    data.forEach(c => {
++        let launchBtn = c.status === 'DRAFT' ? `<button onclick="launchResearchCampaign(${c.id})" style="background:#f59e0b; padding:0.25rem 0.75rem;">▶ Launch</button>` : `<span style="color:#10b981; font-weight:bold;">${c.status}</span>`;
++        list.innerHTML += `
++            <div class="glass-panel" style="padding:1rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
++                <div>
++                    <h3 style="margin:0;">${c.name}</h3>
++                    <p style="margin:0.25rem 0 0 0; color:var(--text-muted); font-size:0.9rem;">
++                        Offer: <strong>${c.offer_name}</strong> | ICP: <strong>${c.icp_name}</strong>
++                    </p>
++                </div>
++                <div>
++                    ${launchBtn}
++                </div>
++            </div>
++        `;
++    });
++}
++
++async function createOffer() {
++    const name = document.getElementById('new-offer-name').value;
++    const description = document.getElementById('new-offer-desc').value;
++    if (!name || !description) return alert('Name and Description are required.');
++    
++    await fetch('/api/sales_offers', {
++        method: 'POST',
++        headers: {'Content-Type': 'application/json'},
++        body: JSON.stringify({name, description})
++    });
++    
++    document.getElementById('new-offer-name').value = '';
++    document.getElementById('new-offer-desc').value = '';
++    loadOffers();
++}
++
++async function createICP() {
++    const name = document.getElementById('new-icp-name').value;
++    const roles = document.getElementById('new-icp-roles').value;
++    const industries = document.getElementById('new-icp-industries').value;
++    const locations = document.getElementById('new-icp-locations').value;
++    if (!name) return alert('Name is required.');
++    
++    await fetch('/api/icps', {
++        method: 'POST',
++        headers: {'Content-Type': 'application/json'},
++        body: JSON.stringify({name, roles, industries, locations})
++    });
++    
++    document.getElementById('new-icp-name').value = '';
++    document.getElementById('new-icp-roles').value = '';
++    document.getElementById('new-icp-industries').value = '';
++    document.getElementById('new-icp-locations').value = '';
++    loadICPs();
++}
++
++async function createResearchCampaign() {
++    const name = document.getElementById('new-campaign-name-input').value;
++    const offer_id = document.getElementById('new-campaign-offer').value;
++    const icp_id = document.getElementById('new-campaign-icp').value;
++    
++    if (!name || !offer_id || !icp_id) return alert('All fields are required.');
++    
++    await fetch('/api/research_campaigns', {
++        method: 'POST',
++        headers: {'Content-Type': 'application/json'},
++        body: JSON.stringify({name, offer_id: parseInt(offer_id), icp_id: parseInt(icp_id)})
++    });
++    
++    document.getElementById('new-campaign-modal').style.display = 'none';
++    loadResearchCampaigns();
++}
++
++async function launchResearchCampaign(id) {
++    if (!confirm('Are you sure you want to launch this campaign? It will start performing live search queries.')) return;
++    
++    await fetch(`/api/research_campaigns/${id}/launch`, {method: 'POST'});
++    alert('Campaign launched! It is now running in the background.');
++    loadResearchCampaigns();
++}
++
++// Ensure these load on startup
++document.addEventListener('DOMContentLoaded', () => {
++    loadOffers();
++    loadICPs();
++    loadResearchCampaigns();
++});
++
++
++async function loadLeads() {
++    const res = await fetch('/api/prospects?status=pending_review');
++    const data = await res.json();
++    const tbody = document.getElementById('leads-tbody');
++    if (!tbody) return;
++    
++    if (data.length === 0) {
++        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No qualified leads found yet.</td></tr>';
++        return;
++    }
++    
++    tbody.innerHTML = '';
++    data.forEach(p => {
++        const why = p.why_matched ? `<span style="font-size:0.85em; color:var(--text-muted);">${p.why_matched}</span>` : `<span style="color:#f59e0b; font-size:0.8em;">No AI reason</span>`;
++        const campaign = p.research_campaign_name || `<span style="color:var(--text-muted);">Legacy</span>`;
++        const relColor = p.relevance_score >= 70 ? '#10b981' : (p.relevance_score >= 40 ? '#f59e0b' : '#ef4444');
++        
++        tbody.innerHTML += `
++            <tr>
++                <td><strong>${p.business_email}</strong></td>
++                <td>${p.company_name}</td>
++                <td>${why}</td>
++                <td>${campaign}</td>
++                <td><span style="background:${relColor}; color:white; padding:0.15rem 0.5rem; border-radius:12px; font-size:0.85em; font-weight:bold;">${p.relevance_score}</span></td>
++            </tr>
++        `;
++    });
++}
++
++document.addEventListener('DOMContentLoaded', () => {
++    loadLeads();
++});
