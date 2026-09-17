@@ -195,7 +195,7 @@ def get_companies(user: dict = Depends(get_current_user)):
     return {"companies": [dict(r) for r in c.fetchall()]}
 
 @app.get("/api/companies/{company_name}/leads")
-def get_company_leads(company_name: str):
+def get_company_leads(company_name: str, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return {"leads": []}
     db = OutreachDatabase(DB_PATH)
@@ -234,7 +234,7 @@ def get_analytics(user: dict = Depends(get_current_user)):
     }
 
 @app.get("/api/prospects")
-def get_prospects(status: str = "pending_review", date_from: str = None, date_to: str = None):
+def get_prospects(status: str = "pending_review", date_from: str = None, date_to: str = None, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return []
     db = OutreachDatabase(DB_PATH)
@@ -263,7 +263,7 @@ class UpdateCompanyRequest(BaseModel):
     company: str
 
 @app.post("/api/contacts/update_company")
-def update_contact_company(req: UpdateCompanyRequest):
+def update_contact_company(req: UpdateCompanyRequest, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return {"success": False, "error": "DB not found"}
     db = OutreachDatabase(DB_PATH)
@@ -282,7 +282,7 @@ class DeleteContactsRequest(BaseModel):
     emails: list[str]
 
 @app.post("/api/contacts/blacklist")
-def blacklist_contacts(req: DeleteContactsRequest):
+def blacklist_contacts(req: DeleteContactsRequest, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return {"success": False, "error": "DB not found"}
     db = OutreachDatabase(DB_PATH)
@@ -302,7 +302,7 @@ class ApproveRequest(BaseModel):
     reason: str
 
 @app.post("/api/approve")
-def approve_prospect(req: ApproveRequest):
+def approve_prospect(req: ApproveRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     if not req.reason.strip():
@@ -317,7 +317,7 @@ class ApproveAllRequest(BaseModel):
     reason: str
 
 @app.post("/api/approve_all")
-def api_approve_all(req: ApproveAllRequest):
+def api_approve_all(req: ApproveAllRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     count = db.approve_all(req.campaign, req.reason)
@@ -331,7 +331,7 @@ class ApproveSelectedRequest(BaseModel):
     reason: str = "Manually selected via Dashboard"
 
 @app.post("/api/approve_selected")
-def api_approve_selected(req: ApproveSelectedRequest):
+def api_approve_selected(req: ApproveSelectedRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     count = 0
@@ -355,7 +355,7 @@ class RejectSelectedRequest(BaseModel):
     ids: list[int]
 
 @app.post("/api/reject_selected")
-def api_reject_selected(req: RejectSelectedRequest):
+def api_reject_selected(req: RejectSelectedRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     count = 0
@@ -372,7 +372,7 @@ class RestoreRequest(BaseModel):
     id: int
 
 @app.post("/api/restore")
-def api_restore(req: RestoreRequest):
+def api_restore(req: RestoreRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     cursor = db.connection.cursor()
@@ -388,7 +388,7 @@ class UpdateCompanyRequest(BaseModel):
     company_name: str
 
 @app.post("/api/prospects/update_company")
-def update_company(req: UpdateCompanyRequest):
+def update_company(req: UpdateCompanyRequest, user: dict = Depends(get_current_user)):
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.execute("UPDATE prospects SET company_name=? WHERE id=?", (req.company_name, req.id))
@@ -403,7 +403,7 @@ class UpdateCampaignRequest(BaseModel):
     campaign_id: int | None = None
 
 @app.post("/api/prospects/update_campaign")
-def update_campaign(req: UpdateCampaignRequest):
+def update_campaign(req: UpdateCampaignRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     if req.campaign_id:
         camp_id = req.campaign_id
@@ -420,7 +420,7 @@ def update_campaign(req: UpdateCampaignRequest):
     return {"success": True}
 
 @app.get("/api/archive")
-def get_archive(date_from: str = None, date_to: str = None):
+def get_archive(date_from: str = None, date_to: str = None, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return []
     conn = sqlite3.connect(DB_PATH)
@@ -455,7 +455,7 @@ class CampaignRequest(BaseModel):
     template: str
 
 @app.get("/api/campaigns")
-def get_campaigns():
+def get_campaigns(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return []
     db = OutreachDatabase(DB_PATH)
@@ -466,7 +466,7 @@ def get_campaigns():
         return []
 
 @app.post("/api/campaigns")
-def create_campaign(req: CampaignRequest):
+def create_campaign(req: CampaignRequest, user: dict = Depends(get_current_user)):
     if not req.name.strip() or not req.template.strip():
         raise HTTPException(status_code=400, detail="Name and template are required")
     from datetime import datetime, timezone
@@ -480,7 +480,7 @@ def create_campaign(req: CampaignRequest):
         raise HTTPException(status_code=400, detail="Campaign already exists")
 
 @app.delete("/api/campaigns/{name}")
-def delete_campaign(name: str):
+def delete_campaign(name: str, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("DELETE FROM campaigns WHERE name=?", (name,))
     db.connection.commit()
@@ -504,14 +504,14 @@ class ResearchCampaignRequest(BaseModel):
     icp_id: int
 
 @app.get("/api/sales_offers")
-def get_sales_offers():
+def get_sales_offers(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists(): return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("SELECT * FROM sales_offers ORDER BY id DESC").fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/sales_offers")
-def create_sales_offer(req: OfferRequest):
+def create_sales_offer(req: OfferRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute(
         "INSERT INTO sales_offers (name, description, created_at_utc) VALUES (?, ?, ?)",
@@ -521,14 +521,14 @@ def create_sales_offer(req: OfferRequest):
     return {"success": True}
 
 @app.get("/api/icps")
-def get_icps():
+def get_icps(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists(): return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("SELECT * FROM ideal_customer_profiles ORDER BY id DESC").fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/icps")
-def create_icp(req: ICPRequest):
+def create_icp(req: ICPRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute(
         "INSERT INTO ideal_customer_profiles (name, roles, industries, company_sizes, countries, languages, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -538,7 +538,7 @@ def create_icp(req: ICPRequest):
     return {"success": True}
 
 @app.get("/api/research_campaigns")
-def get_research_campaigns():
+def get_research_campaigns(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists(): return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("""
@@ -551,7 +551,7 @@ def get_research_campaigns():
     return [dict(r) for r in rows]
 
 @app.post("/api/research_campaigns")
-def create_research_campaign(req: ResearchCampaignRequest):
+def create_research_campaign(req: ResearchCampaignRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute(
         "INSERT INTO research_campaigns (name, offer_id, icp_id, status, created_at_utc) VALUES (?, ?, ?, 'DRAFT', ?)",
@@ -572,7 +572,7 @@ def create_research_campaign(req: ResearchCampaignRequest):
     return {"success": True}
 
 @app.post("/api/research_campaigns/{id}/launch")
-def launch_research_campaign(id: int, background_tasks: BackgroundTasks):
+def launch_research_campaign(id: int, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("UPDATE research_campaigns SET status = 'RUNNING' WHERE id = ?", (id,))
     db.connection.commit()
@@ -595,7 +595,7 @@ def get_templates(user: dict = Depends(get_current_user)):
         return []
 
 @app.get("/api/templates/{name}")
-def get_template_content(name: str):
+def get_template_content(name: str, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     try:
         row = db.connection.execute("SELECT content FROM templates WHERE name=?", (name,)).fetchone()
@@ -609,7 +609,7 @@ class TemplateRequest(BaseModel):
     content: str
 
 @app.post("/api/templates/{name}")
-def save_template(name: str, req: TemplateRequest):
+def save_template(name: str, req: TemplateRequest, user: dict = Depends(get_current_user)):
     if not name.endswith(".txt"):
         name += ".txt"
     from datetime import datetime, timezone
@@ -622,7 +622,7 @@ def save_template(name: str, req: TemplateRequest):
     return {"success": True, "message": "Template saved successfully"}
 
 @app.delete("/api/templates/{name}")
-def delete_template(name: str):
+def delete_template(name: str, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("DELETE FROM templates WHERE name=?", (name,))
     db.connection.commit()
@@ -643,14 +643,14 @@ class ToggleQueryRequest(BaseModel):
     is_enabled: int
 
 @app.post("/api/campaign_queries/{query_id}/toggle")
-def toggle_campaign_query(query_id: int, req: ToggleQueryRequest):
+def toggle_campaign_query(query_id: int, req: ToggleQueryRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("UPDATE campaign_queries SET is_enabled = ? WHERE id = ?", (req.is_enabled, query_id))
     db.connection.commit()
     return {"status": "success"}
 
 @app.post("/api/campaigns/{campaign_id}/generate_plan")
-def generate_campaign_plan(campaign_id: int):
+def generate_campaign_plan(campaign_id: int, user: dict = Depends(get_current_user)):
     from osint_engine.generator import QueryGenerator
     gen = QueryGenerator(db_path=str(DB_PATH))
     queries = gen.get_concrete_queries(campaign_id)
@@ -667,7 +667,7 @@ def generate_campaign_plan(campaign_id: int):
     return {"generated": len(queries)}
 
 @app.get("/api/campaigns/{campaign_id}/queries")
-def get_campaign_queries(campaign_id: int):
+def get_campaign_queries(campaign_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.row_factory = sqlite3.Row
     rows = db.connection.execute("SELECT * FROM campaign_queries WHERE campaign_id=?", (campaign_id,)).fetchall()
@@ -677,7 +677,7 @@ class UpdateCampaignQueryRequest(BaseModel):
     query: str
 
 @app.put("/api/campaign_queries/{query_id}")
-def update_campaign_query(query_id: int, req: UpdateCampaignQueryRequest):
+def update_campaign_query(query_id: int, req: UpdateCampaignQueryRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("UPDATE campaign_queries SET query = ? WHERE id = ?", (req.query, query_id))
     db.connection.commit()
@@ -688,7 +688,7 @@ import sys
 import os
 
 @app.post("/api/campaigns/{campaign_id}/launch")
-def launch_campaign(campaign_id: int):
+def launch_campaign(campaign_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     db.connection.execute("UPDATE research_campaigns SET status = 'RUNNING' WHERE id = ?", (campaign_id,))
     db.connection.commit()
@@ -707,7 +707,7 @@ class QueryRequest(BaseModel):
     query: str
 
 @app.post("/api/queries")
-def add_query(req: QueryRequest):
+def add_query(req: QueryRequest, user: dict = Depends(get_current_user)):
     query = req.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
@@ -721,7 +721,7 @@ def add_query(req: QueryRequest):
         return {"success": True, "message": "Query already exists"}
 
 @app.delete("/api/queries")
-def delete_query(req: QueryRequest):
+def delete_query(req: QueryRequest, user: dict = Depends(get_current_user)):
     query_to_delete = req.query.strip()
     db = OutreachDatabase(DB_PATH)
     cursor = db.connection.execute("DELETE FROM research_queries WHERE query=?", (query_to_delete,))
@@ -733,7 +733,7 @@ def delete_query(req: QueryRequest):
     return {"success": True, "message": "Query deleted"}
 
 @app.put("/api/queries")
-def edit_query(req: dict):
+def edit_query(req: dict, user: dict = Depends(get_current_user)):
     old_query = req.get("old_query", "").strip()
     new_query = req.get("new_query", "").strip()
     if not old_query or not new_query:
@@ -784,7 +784,7 @@ class ResearchRequest(BaseModel):
     queries: list[str] | None = None
 
 @app.post("/api/research")
-def start_research(req: ResearchRequest, background_tasks: BackgroundTasks):
+def start_research(req: ResearchRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     background_tasks.add_task(run_research_task, req.queries)
     return {"success": True, "message": "Research started in background."}
 
@@ -828,7 +828,7 @@ def run_send_task(campaign: str, limit: int):
         ], cwd=str(ROOT), stdout=f, stderr=subprocess.STDOUT)
 
 @app.post("/api/send")
-def trigger_send(req: SendRequest, background_tasks: BackgroundTasks):
+def trigger_send(req: SendRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     
     # SAFETY CHECK: Prevent sending if template contains AI placeholders
@@ -867,7 +867,7 @@ def get_research_logs(user: dict = Depends(get_current_user)):
         return {"logs": f.read()}
 
 @app.get("/api/download_log/{log_type}")
-def download_log(log_type: str):
+def download_log(log_type: str, user: dict = Depends(get_current_user)):
     if log_type == "send":
         path = SEND_LOG_PATH
         filename = "campaign_send_logs.txt"
@@ -892,7 +892,7 @@ class ManualAddRequest(BaseModel):
     campaign: str
 
 @app.post("/api/prospects/manual_add")
-def api_manual_add(req: ManualAddRequest):
+def api_manual_add(req: ManualAddRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     email = normalize_email(req.email)
     
@@ -925,7 +925,7 @@ def api_manual_add(req: ManualAddRequest):
         return {"success": False, "error": "Questo lead esiste già nel database."}
         
 @app.post("/api/import_csv")
-def api_import_csv(req: ImportCsvRequest):
+def api_import_csv(req: ImportCsvRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     
@@ -993,7 +993,7 @@ class QuickSendRequest(BaseModel):
     limit: int = 50
 
 @app.post("/api/quick_send")
-def api_quick_send(req: QuickSendRequest, background_tasks: BackgroundTasks):
+def api_quick_send(req: QuickSendRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     audit = AuditLog(AUDIT_PATH)
     
@@ -1044,7 +1044,7 @@ class GenerateRequest(BaseModel):
     context: str | None = ""
 
 @app.post("/api/generate_template")
-def generate_template(req: GenerateRequest):
+def generate_template(req: GenerateRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("SELECT key, value FROM settings").fetchall()
     settings = {r["key"]: r["value"] for r in rows}
@@ -1111,7 +1111,7 @@ def get_settings(user: dict = Depends(get_current_user)):
     return {r["key"]: r["value"] for r in rows}
 
 @app.post("/api/settings")
-def update_settings(req: SettingsRequest):
+def update_settings(req: SettingsRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     settings = [
         ("smtp_host", req.smtp_host),
@@ -1140,7 +1140,7 @@ class ManualMarkRequest(BaseModel):
     prospect_id: int
     
 @app.post("/api/prospects/mark_replied")
-def api_mark_replied(req: ManualMarkRequest):
+def api_mark_replied(req: ManualMarkRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     # Using a fake message_id and body for manual marking
     db.mark_replied(req.prospect_id, "manual-mark", "Manually Marked as Replied", "")
@@ -1151,7 +1151,7 @@ class RequeueRequest(BaseModel):
     campaign_id: int
 
 @app.post("/api/prospects/requeue")
-def api_prospects_requeue(req: RequeueRequest):
+def api_prospects_requeue(req: RequeueRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     try:
         # Note: We update status to 'approved' and change the campaign_id,
@@ -1165,7 +1165,7 @@ def api_prospects_requeue(req: RequeueRequest):
         return {"success": False, "error": str(e)}
 
 @app.post("/api/prospects/mark_unsubscribed")
-def api_mark_unsubscribed(req: ManualMarkRequest):
+def api_mark_unsubscribed(req: ManualMarkRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     email = db.connection.execute("SELECT business_email FROM prospects WHERE id = ?", (req.prospect_id,)).fetchone()
     if email:
@@ -1190,7 +1190,7 @@ class LushaSearchRequest(BaseModel):
     limit: int = 10
 
 @app.post("/api/lusha/search")
-def lusha_search(req: LushaSearchRequest):
+def lusha_search(req: LushaSearchRequest, user: dict = Depends(get_current_user)):
     import json
     import urllib.request
     
@@ -1320,7 +1320,7 @@ class LushaAdvancedSearchRequest(BaseModel):
     limit: int = 25
 
 @app.post("/api/lusha/prospect")
-def lusha_prospect(req: LushaAdvancedSearchRequest):
+def lusha_prospect(req: LushaAdvancedSearchRequest, user: dict = Depends(get_current_user)):
     import json
     import urllib.request
     
@@ -1476,7 +1476,7 @@ class TestSmtpRequest(BaseModel):
     template: str
 
 @app.post("/api/test_smtp")
-def api_test_smtp(req: TestSmtpRequest):
+def api_test_smtp(req: TestSmtpRequest, user: dict = Depends(get_current_user)):
     import smtplib, ssl, traceback
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -1532,7 +1532,7 @@ class PasswordRequest(BaseModel):
     new_password: str
 
 @app.post("/api/change_password")
-def change_password(req: PasswordRequest):
+def change_password(req: PasswordRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     u = db.connection.execute("SELECT password_hash, salt FROM users WHERE id = ?", (user["id"],)).fetchone()
     old_hash = hashlib.pbkdf2_hmac('sha256', req.old_password.encode('utf-8'), u["salt"], 100000)

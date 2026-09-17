@@ -17,7 +17,7 @@ function switchTab(tabId) {
     const tabElement = document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`);
     if(tabElement) tabElement.classList.add('active');
 
-    const allTabs = ['overview', 'campaigns', 'query_studio', 'leads', 'companies', 'analytics', 'providers', 'settings'];
+    const allTabs = ['overview', 'campaigns', 'query_studio', 'leads', 'companies', 'analytics', 'providers', 'settings', 'outreach_campaigns', 'templates', 'send', 'archive'];
     allTabs.forEach(t => {
         const el = document.getElementById(`tab-${t}`);
         if (el) el.classList.add('hidden');
@@ -707,7 +707,7 @@ document.querySelector('button[onclick="document.getElementById(\\'csv-import-mo
 window.loadOutreachCampaigns = async function() {
     const res = await fetch('/api/campaigns');
     const campaigns = await res.json();
-    const tbody = document.getElementById('campaigns-tbody');
+    const tbody = document.getElementById('outreach-campaigns-tbody');
     tbody.innerHTML = '';
     
     campaigns.forEach(c => {
@@ -870,7 +870,7 @@ window.switchTab = function(tabId) {
     
     // Auto-load data for new tabs
     if(tabId === 'leads') {
-        window.switchLeadSubTab('pending');
+        loadProspects();
     } else if(tabId === 'outreach_campaigns') {
         loadOutreachCampaigns();
     } else if(tabId === 'templates') {

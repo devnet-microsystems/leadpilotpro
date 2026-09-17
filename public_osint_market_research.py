@@ -20,6 +20,8 @@ from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProv
 from osint_engine.crawler import CompanyCrawler
 from osint_engine.normalization import DomainClassifier
 from osint_engine.strategy import QueryStrategyEngine
+from osint_engine.quality import LeadScorer, AIExtractor
+import dataclasses
 
 APP_NAME = "LeadPilotProOSINT"
 
@@ -329,8 +331,8 @@ def main():
                     text=cq["query"],
                     family=cq["family"],
                     round=0,
-                    priority=cq["base_score"],
-                    template=str(cq["template_id"]),  # We store template_id in template field for now, to map it later
+                    priority=1.0,
+                    template="",  # We store template_id in template field for now, to map it later
                     provider_name=p
                 ))
     
@@ -549,7 +551,31 @@ def main():
                         leads = crawler.crawl(page, res.url, res.domain, res.engine, spec.text)
                         
                         for lead in leads:
-                            is_new = store.save_lead(lead, query_run_id=query_run_id, campaign_id=args.campaign_id)
+                            # 1. Relevance Score
+                            score, _ = LeadScorer.calculate_score(
+                                email=lead.email, 
+                                confidence_type=lead.confidence_type, 
+                                page_title=res.title, 
+                                context_text=res.snippet, 
+                                role=target_ctx.role, 
+                                industry=target_ctx.industry, 
+                                location=target_ctx.location
+                            )
+                            
+                            # 2. AI Qualification
+                            reason = ""
+                            if score >= 40:
+                                reason = AIExtractor.generate_why_matched(
+                                    db_path=str(database_path),
+                                    campaign_id=args.campaign_id,
+                                    lead_email=lead.email,
+                                    page_title=res.title,
+                                    context_text=res.snippet
+                                )
+                            
+                            qualified_lead = dataclasses.replace(lead, relevance_score=score, why_matched=reason)
+                            
+                            is_new = store.save_lead(qualified_lead, query_run_id=query_run_id, campaign_id=args.campaign_id)
                             if is_new:
                                 query_new_emails += 1
                                 round_new_emails += 1
