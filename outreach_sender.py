@@ -514,8 +514,18 @@ class OutreachDatabase:
 
     def mark_unsubscribed(self, email: str, reason: str = "Unsubscribed") -> None:
         now = utc_now()
-        self.connection.execute("INSERT OR IGNORE INTO suppression_list(business_email, reason, added_at_utc) VALUES (?, ?, ?)", (email.strip().lower(), reason, now))
-        self.connection.execute("UPDATE prospects SET status = 'unsubscribed' WHERE business_email = ?", (email.strip().lower(),))
+        normalized = normalize_email(email)
+        if not normalized:
+            return
+        self.connection.execute(
+            "INSERT INTO suppression_list(business_email, reason, suppressed_at_utc) VALUES (?, ?, ?) "
+            "ON CONFLICT(business_email) DO UPDATE SET reason = excluded.reason, suppressed_at_utc = excluded.suppressed_at_utc",
+            (normalized, reason, now),
+        )
+        self.connection.execute(
+            "UPDATE prospects SET status = 'unsubscribed' WHERE lower(business_email) = ?",
+            (normalized,),
+        )
         self.connection.commit()
 
     def mark_error(self, prospect_id: int, error: str) -> None:
