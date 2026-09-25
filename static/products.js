@@ -28,6 +28,7 @@ async function loadProductsList() {
                                     ${p.status === 'DRAFT' ? `<button onclick="analyzeProduct(${p.id})" style="margin-left: 10px; padding: 2px 8px; font-size: 0.8rem; background: var(--primary);">Analyze</button>` : ''}
                                     ${p.status === 'FAILED' ? `<button onclick="analyzeProduct(${p.id})" style="margin-left: 10px; padding: 2px 8px; font-size: 0.8rem; background: var(--error);">Retry</button>` : ''}
                                     <button onclick="openProductSources(${p.id})" style="margin-left:10px; padding:2px 8px; font-size:.8rem; background:transparent; border:1px solid var(--border);">Sources / PDFs</button>
+                                    ${p.error_message ? `<div style="margin-top:.45rem;color:var(--error);font-size:.78rem;max-width:720px;">Error: ${escapeHtml(p.error_message)}</div>` : ''}
                                 </td>
                             </tr>
                         `).join('')}
@@ -68,14 +69,36 @@ async function loadProductsList() {
 
 async function analyzeProduct(productId) {
     try {
-        const res = await fetch(`/api/products/${productId}/analyze`, { method: 'POST' });
-        if (!res.ok) throw new Error("Failed to start analysis");
-        showToast("Analysis started", "success");
-        loadProductsList();
+        const [productRes, sourceRes] = await Promise.all([
+            fetch(`/api/products/${productId}`),
+            fetch(`/api/products/${productId}/sources`)
+        ]);
+        if (!productRes.ok || !sourceRes.ok) throw new Error("Could not inspect product sources");
+        const product = await productRes.json();
+        const sources = await sourceRes.json();
 
+        if (!Array.isArray(sources) || sources.length === 0) {
+            showToast(
+                `Add at least one source (URL, text, or PDF) to "${product.name}" before analyzing.`,
+                "error"
+            );
+            openProductSources(productId);
+            return;
+        }
+
+        const res = await fetch(`/api/products/${productId}/analyze`, { method: 'POST' });
+        if (!res.ok) {
+            let detail = "Failed to start analysis";
+            try {
+                const data = await res.json();
+                if (data.detail) detail = data.detail;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        showToast("Analysis started", "success");
         await loadProductsList();
     } catch (e) {
-        showToast(e.message, "error");
+        showToast(e.message || "Could not start analysis", "error");
     }
 }
 
