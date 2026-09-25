@@ -25,6 +25,7 @@ import os
 import random
 import re
 import smtplib
+import socket
 import sqlite3
 import sys
 import time
@@ -35,6 +36,8 @@ from email.utils import formataddr, make_msgid
 from pathlib import Path
 from string import Formatter
 from typing import Iterable
+
+from email_hygiene import junk_reason
 
 APP_NAME = "ControlledB2BOutreach"
 
@@ -78,8 +81,10 @@ class AuditLog:
 
 class OutreachDatabase:
     def __init__(self, path: Path) -> None:
-        self.connection = sqlite3.connect(path)
+        self.db_path = path
+        self.connection = sqlite3.connect(path, timeout=10.0, isolation_level=None)
         self.connection.row_factory = sqlite3.Row
+        self.connection.execute("PRAGMA journal_mode=WAL;")
         self._create_schema()
 
     def _create_schema(self) -> None:
@@ -102,12 +107,14 @@ class OutreachDatabase:
                 email_confidence REAL,
                 confidence_type TEXT,
                 company_score REAL,
-                contact_score REAL,
-                research_campaign_id INTEGER,
-                why_matched TEXT DEFAULT '',
                 relevance_score REAL,
-                UNIQUE(target_url, business_email),
-                FOREIGN KEY(campaign_id) REFERENCES campaigns(id)
+                research_campaign_id INTEGER,
+                why_matched TEXT,
+                email_quality TEXT DEFAULT 'UNKNOWN',
+                qualification_status TEXT DEFAULT 'REVIEW_REQUIRED',
+                rejection_reason TEXT,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+                FOREIGN KEY (research_campaign_id) REFERENCES research_campaigns (id)
             );
 
             CREATE TABLE IF NOT EXISTS campaigns (
@@ -194,13 +201,29 @@ class OutreachDatabase:
         if user_count == 0:
             import hashlib
             import os
-            
+            import secrets
+
+            # Prima l'admin era sempre "admin"/"admin": chiunque raggiungesse /api/login su
+            # un'installazione nuova entrava. Ora la password e' casuale e viene scritta UNA
+            # SOLA volta in un file accanto al database, cosi' solo chi ha accesso al filesystem
+            # la vede (mai in un log, mai su stdout).
+            generated_password = secrets.token_urlsafe(15)
             salt = os.urandom(16)
-            password_hash = hashlib.pbkdf2_hmac('sha256', b'admin', salt, 100000)
+            password_hash = hashlib.pbkdf2_hmac('sha256', generated_password.encode(), salt, 100000)
             self.connection.execute(
                 "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
                 ("admin", password_hash, salt)
             )
+            try:
+                pw_file = Path(self.db_path).with_name("FIRST_LOGIN_PASSWORD.txt")
+                pw_file.write_text(
+                    "LeadPilot Pro - initial admin credentials\n"
+                    "username: admin\n"
+                    f"password: {generated_password}\n\n"
+                    "Change the password after logging in, then delete this file.\n"
+                )
+            except OSError:
+                pass  # il DB resta comunque utilizzabile; l'utente puo' recuperare la password da qui solo se il file e' stato scritto
             
             # Seed default settings from environment if possible, otherwise empty
             import os
@@ -273,7 +296,8 @@ class OutreachDatabase:
         query = """
             SELECT p.id, p.company_name, p.business_email, p.target_url, c.name as campaign,
                    p.campaign_id, p.reason_for_contact, p.imported_at_utc,
-                   p.why_matched, p.relevance_score, rc.name as research_campaign_name
+                   p.why_matched, p.relevance_score, rc.name as research_campaign_name,
+                   p.email_quality, p.qualification_status
             FROM prospects p 
             LEFT JOIN campaigns c ON p.campaign_id = c.id
             LEFT JOIN research_campaigns rc ON p.research_campaign_id = rc.id
@@ -291,7 +315,30 @@ class OutreachDatabase:
         query += " ORDER BY p.id"
         return self.connection.execute(query, params).fetchall()
 
+    def reject_junk_prospects(self, where_sql: str = "status = 'pending_review'", params: tuple = ()) -> int:
+        """Rifiuta (status='rejected') i prospect con indirizzo strutturalmente inutilizzabile
+        (chiavi Sentry, domini segnaposto/riservati, fixture di test...). Ritorna quanti ne ha rifiutati."""
+        rows = self.connection.execute(f"SELECT id, business_email FROM prospects WHERE {where_sql}", params).fetchall()
+        rejected = 0
+        for row in rows:
+            reason = junk_reason(row["business_email"])
+            if reason:
+                self.connection.execute(
+                    "UPDATE prospects SET status = 'rejected', rejection_reason = ? WHERE id = ?",
+                    (reason, row["id"]),
+                )
+                try:
+                    self.connection.execute(
+                        "INSERT INTO audit_log (prospect_id, timestamp_utc, action, details) VALUES (?, ?, ?, ?)",
+                        (row["id"], utc_now(), "rejected_junk_address", reason),
+                    )
+                except sqlite3.OperationalError:
+                    pass  # audit_log assente su DB molto vecchi: il rifiuto resta valido
+                rejected += 1
+        return rejected
+
     def approve(self, prospect_id: int, reason: str, campaign_id: int | None = None) -> bool:
+        self.reject_junk_prospects("id = ? AND status = 'pending_review'", (prospect_id,))
         cursor = self.connection.execute(
             """
             UPDATE prospects
@@ -305,6 +352,7 @@ class OutreachDatabase:
 
     def approve_all(self, campaign: str, reason: str) -> int:
         camp_id = self.get_or_create_campaign_id(campaign)
+        self.reject_junk_prospects("campaign_id = ? AND status = 'pending_review'", (camp_id,))
         cursor = self.connection.execute(
             """
             UPDATE prospects
@@ -341,12 +389,38 @@ class OutreachDatabase:
         return True
 
     def approved_for_campaign(self, campaign: str, limit: int) -> list[sqlite3.Row]:
+        """Prospect approvati e inviabili. Gli indirizzi inutilizzabili vengono rifiutati qui,
+        cosi' non arrivano mai a SMTP anche se approvati in passato."""
+        rows = self._approved_rows(campaign, limit)
+        for _ in range(5):
+            junk_ids = [r["id"] for r in rows if junk_reason(r["business_email"])]
+            if not junk_ids:
+                return rows
+            marks = ",".join("?" for _ in junk_ids)
+            self.reject_junk_prospects(f"id IN ({marks})", tuple(junk_ids))
+            rows = self._approved_rows(campaign, limit)
+        return [r for r in rows if not junk_reason(r["business_email"])]
+
+    def _approved_rows(self, campaign: str, limit: int) -> list[sqlite3.Row]:
         return self.connection.execute(
             """
             SELECT p.*, c.name as campaign_name FROM prospects p
             JOIN campaigns c ON p.campaign_id = c.id
             LEFT JOIN suppression_list s ON lower(s.business_email) = lower(p.business_email)
-            WHERE c.name = ? AND p.status = 'approved' AND s.business_email IS NULL
+            LEFT JOIN research_campaigns rc ON p.research_campaign_id = rc.id
+            LEFT JOIN prospect_product_fit ppf ON ppf.prospect_id = p.id AND ppf.product_id = rc.product_id
+            WHERE c.name = ? 
+              AND p.status = 'approved' 
+              AND p.qualification_status = 'QUALIFIED' 
+              AND s.business_email IS NULL
+              AND (
+                  rc.product_id IS NULL
+                  OR (
+                      ppf.id IS NOT NULL 
+                      AND ppf.fit_status = 'FIT' 
+                      AND ppf.fit_score >= 60
+                  )
+              )
             ORDER BY p.approved_at_utc, p.id
             LIMIT ?
             """,
@@ -499,6 +573,11 @@ def read_template(path: Path) -> tuple[str, str]:
     fields = {field_name for _, field_name, _, _ in Formatter().parse(raw) if field_name}
     allowed = {"company_name", "domain", "target_url", "reason_for_contact", "company", "website", "reply_to", "unsubscribe_address"}
     unknown = fields - allowed
+    if unknown:
+        raise ValueError(f"Template uses unsupported fields: {sorted(unknown)}")
+    return subject, body.strip()
+
+
 def build_message(row: sqlite3.Row, settings: MailSettings, template_content: str) -> EmailMessage:
     parts = template_content.split("\n\n", 1)
     subject_template = parts[0].replace("Subject:", "").strip()
@@ -545,7 +624,15 @@ def build_message(row: sqlite3.Row, settings: MailSettings, template_content: st
     return message
 
 
+class SmtpDisabledError(ConnectionError):
+    """Invio disabilitato (test mode). Sottoclasse di ConnectionError: il batch si ferma e nessun prospect viene rifiutato."""
+
+
 def send_message(message: EmailMessage, settings: MailSettings) -> None:
+    # Rete di sicurezza: sotto pytest (o con LEADPILOT_DISABLE_SMTP=1) non si spedisce MAI email vere.
+    # In passato i test copiavano il DB di produzione, credenziali SMTP incluse, e hanno inviato a domini reali.
+    if os.environ.get("LEADPILOT_DISABLE_SMTP") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
+        raise SmtpDisabledError("SMTP disabled in test mode (LEADPILOT_DISABLE_SMTP / pytest)")
     # TLS is mandatory. The script does not support plain SMTP.
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
         server.ehlo()
@@ -644,10 +731,25 @@ def execute_campaign(
     if not confirmed:
         raise ValueError("Real sending requires both --send and --confirm-send")
 
+    infrastructure_errors = (
+        smtplib.SMTPAuthenticationError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected,
+        smtplib.SMTPHeloError, ConnectionError, TimeoutError, socket.gaierror,
+    )
     for position, prospect in enumerate(prospects, start=1):
-        message = build_message(prospect, settings, template_content)
+        try:
+            message = build_message(prospect, settings, template_content)
+        except Exception as e:
+            # Un errore di template colpisce TUTTI i prospect: si ferma il batch senza toccare nessuno.
+            logging.error("template error (prospect %s): %s - batch aborted, no prospect was modified", prospect["id"], e)
+            raise
         try:
             send_message(message, settings)
+        except infrastructure_errors as e:
+            # Password errata, host irraggiungibile, timeout: non e' colpa del destinatario.
+            # Si ferma il batch e il prospect resta 'approved' (prima veniva rifiutato uno dopo l'altro).
+            logging.error("SMTP infrastructure error (%s): %s - batch aborted, prospect %s left approved",
+                          type(e).__name__, e, prospect["id"])
+            return
         except Exception as e:
             logging.error(f"send failed for prospect {prospect['id']}: {e}")
             db.connection.execute("UPDATE prospects SET status='rejected' WHERE id=?", (prospect["id"],))

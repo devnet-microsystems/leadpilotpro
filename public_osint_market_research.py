@@ -20,7 +20,7 @@ from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProv
 from osint_engine.crawler import CompanyCrawler
 from osint_engine.normalization import DomainClassifier
 from osint_engine.strategy import QueryStrategyEngine
-from osint_engine.quality import LeadScorer, AIExtractor
+from osint_engine.quality import LeadScorer, AIExtractor, EmailValidator
 import dataclasses
 
 APP_NAME = "LeadPilotProOSINT"
@@ -49,22 +49,37 @@ class LeadStore:
                 duration_ms INTEGER,
                 status TEXT DEFAULT 'SUCCESS',
                 provider_state TEXT DEFAULT '',
-                created_at TIMESTAMP
+                created_at TIMESTAMP,
+                campaign_id INTEGER,
+                template_id INTEGER
             )
         """)
         
         self.connection.execute("""
             CREATE TABLE IF NOT EXISTS prospects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_email TEXT UNIQUE,
-                company_name TEXT,
-                target_url TEXT,
-                source_file TEXT,
-                status TEXT,
-                imported_at_utc TEXT,
+                target_url TEXT NOT NULL,
+                company_name TEXT NOT NULL,
+                business_email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                source_file TEXT NOT NULL,
+                campaign_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'pending_review',
+                reason_for_contact TEXT NOT NULL DEFAULT '',
+                imported_at_utc TEXT NOT NULL,
+                approved_at_utc TEXT,
+                sent_at_utc TEXT,
+                message_id TEXT,
+                last_error TEXT,
                 email_confidence REAL,
                 confidence_type TEXT,
-                relevance_score INTEGER DEFAULT 0
+                company_score REAL,
+                contact_score REAL,
+                research_campaign_id INTEGER,
+                why_matched TEXT DEFAULT '',
+                relevance_score REAL,
+                email_quality TEXT,
+                qualification_status TEXT DEFAULT 'REVIEW_REQUIRED',
+                rejection_reason TEXT
             )
         """)
         
@@ -92,44 +107,144 @@ class LeadStore:
         except sqlite3.OperationalError:
             pass
             
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_product_fit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                fit_status TEXT NOT NULL,
+                fit_score INTEGER DEFAULT 0,
+                reason TEXT,
+                matched_signals TEXT,
+                missing_signals TEXT,
+                negative_signals TEXT,
+                evidence_source_ids TEXT,
+                provider TEXT,
+                model TEXT,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                UNIQUE(prospect_id, product_id)
+            )
+        """)
+
+        # Minimal stub so LeadStore can operate standalone (real schema owned by OutreachDatabase).
+        # P5.2E: save_lead() needs to look up research_campaigns.product_id for Product Fit.
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS research_campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                product_id INTEGER,
+                icp_id INTEGER,
+                offer_id INTEGER,
+                status TEXT DEFAULT 'DRAFT',
+                created_at_utc TEXT
+            )
+        """)
+
         self.connection.commit()
 
     def _utc_now(self) -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
-    def save_lead(self, lead: DiscoveredLead, query_run_id: str = "", campaign_id: int = None) -> bool:
+    def save_lead(self, lead: DiscoveredLead, query_run_id: str = "", research_campaign_id: int = None) -> bool:
         cursor = self.connection.cursor()
+        
+        # P3.1 Email Quality
+        email_quality = EmailValidator.classify(lead.email, lead.email_confidence, lead.confidence_type)
+        
+        # P3.3 Qualification Gate
+        qualification_status = 'UNQUALIFIED'
+        status = 'rejected'
+        rejection_reason = 'failed_gate'
+        
+        if email_quality == 'SUPPRESSED':
+            rejection_reason = 'suppressed_email'
+        elif email_quality == 'INVALID':
+            rejection_reason = 'invalid_email'
+            
+        why_matched_text = getattr(lead, 'why_matched', '').strip()
+        
+        if email_quality in ('VALID', 'LIKELY_VALID', 'ROLE_BASED') and (lead.relevance_score or 0) >= 40 and lead.confidence_type != 'SYSTEM' and why_matched_text:
+            qualification_status = 'QUALIFIED'
+            status = 'pending_review'
+            rejection_reason = None
+            
+        company_name = lead.company_name or lead.domain
         
         # Check if prospect exists
         existing = cursor.execute(
-            "SELECT id FROM prospects WHERE business_email = ?",
+            "SELECT id, relevance_score, status, qualification_status, rejection_reason FROM prospects WHERE business_email = ?",
             (lead.email,)
         ).fetchone()
 
         if existing:
             prospect_id = existing[0]
+            old_score = existing[1] or 0
+            old_status = existing[2]
+            old_qual = existing[3]
+            old_reason = existing[4]
             is_new = False
-            # Option to update campaign_id if we want, but usually it keeps original
-        else:
-            company_name = lead.company_name or lead.domain
             
-            if campaign_id is not None:
+            # If the new OSINT run found a better match, update the evidence and campaign
+            if lead.relevance_score and lead.relevance_score > old_score:
+                # Se era unqualified e ora passa il gate, riattiviamolo se non è stato gestito da un umano
+                update_qual = old_qual
+                update_stat = old_status
+                update_rej = old_reason
+                
+                # Protect manual rejects
+                manual_reject_reasons = {'wrong_company', 'wrong_role', 'wrong_location', 'bad_email', 'duplicate', 'not_target', 'other'}
+                is_manual_reject = old_reason in manual_reject_reasons
+                
+                if old_qual == 'UNQUALIFIED' and qualification_status == 'QUALIFIED' and old_status == 'rejected' and not is_manual_reject:
+                    update_qual = 'QUALIFIED'
+                    update_stat = 'pending_review'
+                    update_rej = None
+                
+                cursor.execute(
+                    """
+                    UPDATE prospects 
+                    SET relevance_score = ?, 
+                        why_matched = ?, 
+                        research_campaign_id = COALESCE(research_campaign_id, ?),
+                        email_quality = ?,
+                        qualification_status = ?,
+                        status = ?,
+                        rejection_reason = ?
+                    WHERE id = ?
+                    """,
+                    (lead.relevance_score, getattr(lead, 'why_matched', ''), research_campaign_id, email_quality, update_qual, update_stat, update_rej, prospect_id)
+                )
+        else:
+            # P3.4 Account Penetration
+            if research_campaign_id is not None and qualification_status == 'QUALIFIED':
+                target_url_exact = f"https://{lead.domain}"
+                count = cursor.execute(
+                    "SELECT COUNT(*) FROM prospects WHERE target_url = ? AND research_campaign_id = ?",
+                    (target_url_exact, research_campaign_id)
+                ).fetchone()[0]
+                if count >= 3:
+                    qualification_status = 'SUPPRESSED'
+                    status = 'rejected'
+                    rejection_reason = 'quota_exceeded'
+                    
+            if research_campaign_id is not None:
                 cursor.execute(
                     """
                     INSERT INTO prospects
-                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, research_campaign_id, why_matched)
-                    VALUES (?, ?, ?, 'OSINT MultiEngine', 'pending_review', ?, ?, ?, ?, ?, ?)
+                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, research_campaign_id, why_matched, email_quality, qualification_status, rejection_reason)
+                    VALUES (?, ?, ?, 'OSINT MultiEngine', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (f"https://{lead.domain}", company_name, lead.email, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, campaign_id, getattr(lead, 'why_matched', ''))
+                    (f"https://{lead.domain}", company_name, lead.email, status, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, research_campaign_id, getattr(lead, 'why_matched', ''), email_quality, qualification_status, rejection_reason)
                 )
             else:
                 cursor.execute(
                     """
                     INSERT INTO prospects
-                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, why_matched)
-                    VALUES (?, ?, ?, 'OSINT MultiEngine', 'pending_review', ?, ?, ?, ?, ?)
+                    (target_url, company_name, business_email, source_file, status, imported_at_utc, email_confidence, confidence_type, relevance_score, why_matched, email_quality, qualification_status, rejection_reason)
+                    VALUES (?, ?, ?, 'OSINT MultiEngine', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (f"https://{lead.domain}", company_name, lead.email, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, getattr(lead, 'why_matched', ''))
+                    (f"https://{lead.domain}", company_name, lead.email, status, self._utc_now(), lead.email_confidence, lead.confidence_type, lead.relevance_score, getattr(lead, 'why_matched', ''), email_quality, qualification_status, rejection_reason)
                 )
                 
             prospect_id = cursor.lastrowid
@@ -145,6 +260,83 @@ class LeadStore:
             (prospect_id, lead.source_type, lead.engine, lead.source_url, lead.query, self._utc_now(), query_run_id)
         )
         self.connection.commit()
+        
+        # --- P5.2E Product-Aware Qualification ---
+        if research_campaign_id is not None:
+            # Re-read to check manual rejection protection
+            curr = cursor.execute("SELECT qualification_status, status, rejection_reason FROM prospects WHERE id=?", (prospect_id,)).fetchone()
+            curr_qual = curr[0]
+            curr_stat = curr[1]
+            curr_rej = curr[2]
+            
+            manual_reject_reasons = {'wrong_company', 'wrong_role', 'wrong_location', 'bad_email', 'duplicate', 'not_target', 'other'}
+            is_manual_reject = curr_rej in manual_reject_reasons
+            
+            if not is_manual_reject and (curr_qual == 'QUALIFIED' or qualification_status == 'QUALIFIED'):
+                camp_row = cursor.execute("SELECT product_id FROM research_campaigns WHERE id=?", (research_campaign_id,)).fetchone()
+                if camp_row and camp_row[0]:
+                    product_id = camp_row[0]
+                    prod_row = cursor.execute("SELECT raw_summary FROM products WHERE id=?", (product_id,)).fetchone()
+                    if prod_row and prod_row[0]:
+                        try:
+                            import json
+                            product_profile = json.loads(prod_row[0])
+                            
+                            from osint_engine.product_qualification import ProductQualificationAgent
+                            agent = ProductQualificationAgent(str(self.connection.execute("PRAGMA database_list").fetchall()[0][2])) # Get actual db path
+                            
+                            prospect_evidence = {
+                                "business_email": lead.email,
+                                "company_name": company_name,
+                                "confidence_type": lead.confidence_type,
+                                "why_matched": getattr(lead, 'why_matched', ''),
+                                "source_url": lead.source_url,
+                                "query": lead.query
+                            }
+                            
+                            fit_result = agent.evaluate(product_profile, prospect_evidence)
+                            
+                            fit_status = fit_result.get("fit_status", "REVIEW_REQUIRED")
+                            fit_score = fit_result.get("fit_score", 0)
+                            
+                            # Do NOT overwrite prospect's base qualification_status here.
+                            # It is evaluated on-the-fly in the sender side.
+
+                            
+                            # Upsert ProspectProductFit
+                            now_utc = self._utc_now()
+                            cursor.execute(
+                                """
+                                INSERT INTO prospect_product_fit 
+                                (prospect_id, product_id, fit_status, fit_score, reason, matched_signals, missing_signals, negative_signals, evidence_source_ids, provider, model, created_at_utc, updated_at_utc)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(prospect_id, product_id) DO UPDATE SET
+                                    fit_status=excluded.fit_status,
+                                    fit_score=excluded.fit_score,
+                                    reason=excluded.reason,
+                                    matched_signals=excluded.matched_signals,
+                                    missing_signals=excluded.missing_signals,
+                                    negative_signals=excluded.negative_signals,
+                                    evidence_source_ids=excluded.evidence_source_ids,
+                                    provider=excluded.provider,
+                                    model=excluded.model,
+                                    updated_at_utc=excluded.updated_at_utc
+                                """,
+                                (
+                                    prospect_id, product_id, fit_status, fit_score, fit_result.get("reason", ""),
+                                    json.dumps(fit_result.get("matched_signals", [])),
+                                    json.dumps(fit_result.get("missing_signals", [])),
+                                    json.dumps(fit_result.get("negative_signals", [])),
+                                    json.dumps(fit_result.get("evidence_source_ids", [])),
+                                    "dynamic_provider", "dynamic_model", now_utc, now_utc
+                                )
+                            )
+                            self.connection.commit()
+                        except Exception as e:
+                            import traceback
+                            traceback.print_exc()
+                            print(f"Product Fit error: {e}")
+                            
         return is_new
 
     def save_query_run(
@@ -168,7 +360,7 @@ class LeadStore:
     ) -> int:
         cursor = self.connection.cursor()
         
-        if campaign_id is not None and template_id is not None:
+        if campaign_id is not None:
             cursor.execute(
                 """
                 INSERT INTO query_runs
@@ -263,6 +455,12 @@ def parse_args():
     parser.add_argument("--queries", nargs="*", default=[])
     parser.add_argument("--max-queries", type=int, default=0) # Legacy
     
+    # Budget configuration
+    parser.add_argument("--max-leads", type=int, default=150, help="Maximum number of leads to discover before stopping")
+    
+    # Quick Search Mode
+    parser.add_argument("--quick-search", action="store_true", help="Run without saving to DB and output JSON")
+    
     return parser.parse_args()
 
 def main():
@@ -278,7 +476,7 @@ def main():
         if args.queries:
             raw_queries = args.queries
         else:
-            if not any([args.role, args.industry, args.location, args.country, args.campaign_id]):
+            if not any([args.role, args.industry, args.location, args.country, args.campaign_id, args.quick_search]):
                 # If neither mode is used, read from DB
                 raw_queries = [row["query"] for row in conn.execute("SELECT query FROM research_queries").fetchall()]
             else:
@@ -291,6 +489,7 @@ def main():
         raw_queries = raw_queries[:args.max_queries]
 
     providers = {
+        "DuckDuckGoProvider": DuckDuckGoProvider(),
         "BingProvider": BingProvider(),
         "SearXNGProvider": SearXNGProvider(),
         "BraveProvider": BraveProvider()
@@ -301,13 +500,6 @@ def main():
     logging.info(f"Active providers: {active_provider_names}")
 
     store = LeadStore(database_path)
-    # Ensure prospects table has relevance_score column if it didn't exist
-    try:
-        store.connection.execute("ALTER TABLE prospects ADD COLUMN relevance_score INTEGER DEFAULT 0")
-        store.connection.commit()
-    except sqlite3.OperationalError:
-        pass # Column likely already exists
-        
     target_ctx = TargetContext(
         role=args.role or "",
         industry=args.industry or "",
@@ -315,12 +507,36 @@ def main():
         country=args.country or ""
     )
     
-    historical_stats = store.get_historical_strategies(target_ctx.target_key)
-    
     pregenerated_specs = None
     if args.campaign_id:
         c = conn.cursor()
         c.row_factory = sqlite3.Row
+        
+        # Load Campaign and ICP to build context
+        camp = c.execute("SELECT icp_id, offer_id FROM research_campaigns WHERE id=?", (args.campaign_id,)).fetchone()
+        if camp:
+            icp = c.execute("SELECT * FROM ideal_customer_profiles WHERE id=?", (camp["icp_id"],)).fetchone()
+            if icp:
+                import json
+                def parse_list(val):
+                    if not val: return []
+                    try:
+                        return json.loads(val)
+                    except json.JSONDecodeError:
+                        return [x.strip() for x in val.split(',') if x.strip()]
+                roles = parse_list(icp["roles"])
+                industries = parse_list(icp["industries"])
+                countries = parse_list(icp["countries"] if "countries" in icp.keys() else "")
+                locations = parse_list(icp["locations"] if "locations" in icp.keys() else "")
+                if not countries: countries = locations
+                
+                target_ctx = TargetContext(
+                    role=", ".join(roles) if roles else target_ctx.role,
+                    industry=", ".join(industries) if industries else target_ctx.industry,
+                    location=", ".join(locations) if locations else target_ctx.location,
+                    country=", ".join(countries) if countries else target_ctx.country
+                )
+        
         c.execute("SELECT * FROM campaign_queries WHERE campaign_id=? AND is_enabled=1", (args.campaign_id,))
         concrete_queries = [dict(r) for r in c.fetchall()]
         
@@ -336,6 +552,8 @@ def main():
                     provider_name=p
                 ))
     
+    historical_stats = store.get_historical_strategies(target_ctx.target_key)
+    
     engine = QueryStrategyEngine(
         target_ctx=target_ctx,
         seed_queries=raw_queries,
@@ -345,14 +563,6 @@ def main():
     )
     
     all_rounds = engine.generate_all_rounds()
-
-    store = LeadStore(database_path)
-    # Ensure prospects table has relevance_score column if it didn't exist
-    try:
-        store.connection.execute("ALTER TABLE prospects ADD COLUMN relevance_score INTEGER DEFAULT 0")
-        store.connection.commit()
-    except sqlite3.OperationalError:
-        pass # Column likely already exists
         
     crawler = CompanyCrawler(
         role=args.role,
@@ -403,11 +613,14 @@ def main():
     MIN_NEW_TARGET_PAGES = 2
     MAX_ROUNDS = 4
     MAX_TOTAL_QUERIES = args.max_queries if args.max_queries > 0 else 30
+    MAX_TOTAL_LEADS = args.max_leads
     
     global_domains_seen = set()
     total_queries_executed = 0
     run_batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     adaptive_report = []
+
+    quick_search_results = []
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.headed)
@@ -436,6 +649,9 @@ def main():
             for spec in round_specs:
                 if total_queries_executed >= MAX_TOTAL_QUERIES:
                     logging.info("MAX_TOTAL_QUERIES reached, stopping round.")
+                    break
+                if metrics["leads_inserted"] >= MAX_TOTAL_LEADS:
+                    logging.info(f"MAX_TOTAL_LEADS ({MAX_TOTAL_LEADS}) reached, stopping round.")
                     break
                     
                 # Provider routing
@@ -575,7 +791,12 @@ def main():
                             
                             qualified_lead = dataclasses.replace(lead, relevance_score=score, why_matched=reason)
                             
-                            is_new = store.save_lead(qualified_lead, query_run_id=query_run_id, campaign_id=args.campaign_id)
+                            if args.quick_search:
+                                quick_search_results.append(dataclasses.asdict(qualified_lead))
+                                is_new = True
+                            else:
+                                is_new = store.save_lead(qualified_lead, query_run_id=query_run_id, research_campaign_id=args.campaign_id)
+                            
                             if is_new:
                                 query_new_emails += 1
                                 round_new_emails += 1
@@ -601,26 +822,31 @@ def main():
                     template_id_val = int(spec.template)
                     query_template_str = "" # The UI can join with query_templates to get the string
                 
-                store.save_query_run(
-                    run_id=query_run_id,
-                    target_key=target_ctx.target_key,
-                    query_template=query_template_str,
-                    query=spec.text,
-                    family=spec.family,
-                    round_num=round_num,
-                    provider=provider.name,
-                    raw_results=len(all_results),
-                    unique_domains=len(domain_map),
-                    new_domains=query_new_domains,
-                    emails_found=query_new_emails,
-                    duration_ms=duration_ms,
-                    status=db_status,
-                    provider_state=provider_state_str,
-                    campaign_id=args.campaign_id,
-                    template_id=template_id_val
-                )
+                if not args.quick_search:
+                    store.save_query_run(
+                        run_id=query_run_id,
+                        target_key=target_ctx.target_key,
+                        query_template=query_template_str,
+                        query=spec.text,
+                        family=spec.family,
+                        round_num=round_num,
+                        provider=provider.name,
+                        raw_results=len(all_results),
+                        unique_domains=len(domain_map),
+                        new_domains=query_new_domains,
+                        emails_found=query_new_emails,
+                        duration_ms=duration_ms,
+                        status=db_status,
+                        provider_state=provider_state_str,
+                        campaign_id=args.campaign_id,
+                        template_id=template_id_val
+                    )
                 
             if total_queries_executed >= MAX_TOTAL_QUERIES:
+                break
+                
+            if metrics["leads_inserted"] >= MAX_TOTAL_LEADS:
+                logging.info(f"MAX_TOTAL_LEADS ({MAX_TOTAL_LEADS}) reached, stopping overall execution.")
                 break
                 
             if round_queries_executed > 0:
@@ -631,8 +857,10 @@ def main():
                 email_yield_per_query = 0
                 
             decision = "CONTINUE"
-            if round_new_domains < MIN_NEW_DOMAINS and round_new_emails < MIN_NEW_EMAILS and round_new_target_pages < MIN_NEW_TARGET_PAGES:
-                decision = "STOP (threshold met)"
+            if round_raw_results == 0:
+                decision = "STOP (SEARCH_INFRASTRUCTURE_FAILURE / 0 Raw Results)"
+            elif round_new_domains < MIN_NEW_DOMAINS and round_new_emails < MIN_NEW_EMAILS and round_new_target_pages < MIN_NEW_TARGET_PAGES:
+                decision = "STOP (Niche exhausted / threshold met)"
                 
             logging.info(f"Round {round_num} Summary:")
             logging.info(f"Queries: {round_queries_executed}")
@@ -704,6 +932,13 @@ def main():
     logging.info(f"  Low (< 40): {metrics['relevance_breakdown']['Low']}")
     
     logging.info("========================================\n")
+
+    if args.quick_search:
+        import json
+        # Output the JSON array of leads to stdout and exit
+        print("QUICK_SEARCH_RESULTS_START")
+        print(json.dumps(quick_search_results, indent=2))
+        print("QUICK_SEARCH_RESULTS_END")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import sqlite3
 import json
 import urllib.request
 from typing import Dict, Any, Tuple
+from .normalization import DISPOSABLE_DOMAINS
+from email_hygiene import junk_reason
 
 class LeadScorer:
     """Computes a multi-dimensional relevance score for a discovered lead without using AI/ML."""
@@ -157,3 +159,40 @@ Rispondi SOLO con il motivo (es: "CTO at a SaaS company matching our WebAuthn se
                 
         except Exception as e:
             return f"Errore LLM: {str(e)[:50]}"
+
+class EmailValidator:
+    """Classifies email addresses into quality buckets (VALID, LIKELY_VALID, ROLE_BASED, LOW_CONFIDENCE, INVALID, SUPPRESSED) without SMTP pings."""
+    
+    @staticmethod
+    def classify(email: str, confidence: float, confidence_type: str) -> str:
+        if not email or "@" not in email:
+            return "INVALID"
+            
+        local_part, domain = email.rsplit('@', 1)
+        domain = domain.lower()
+        
+        # 1. Invalid checks
+        if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
+            return "INVALID"
+            
+        # 1b. Indirizzi strutturalmente inutilizzabili: chiavi Sentry, domini segnaposto/riservati, noreply...
+        if junk_reason(email):
+            return "INVALID"
+
+        # 2. Suppressed / Disposable
+        if domain in DISPOSABLE_DOMAINS:
+            return "SUPPRESSED"
+            
+        # 3. Low Confidence (strict rule: even if role-based, low score is bad)
+        if confidence < 0.60:
+            return "LOW_CONFIDENCE"
+            
+        # 4. Role Based
+        if confidence_type == "ROLE_BASED":
+            return "ROLE_BASED"
+            
+        # 5. Valid / Likely Valid
+        if confidence >= 0.90:
+            return "VALID"
+        else:
+            return "LIKELY_VALID"

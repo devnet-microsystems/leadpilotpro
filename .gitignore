@@ -20,3 +20,10 @@ debug_*/
 
 # Templates
 templates/
+
+# Ignored by Agent
+node_modules/
+.gemini/
+*.zip
+.DS_Store
+FIRST_LOGIN_PASSWORD.txt

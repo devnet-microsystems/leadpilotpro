@@ -1,0 +1,86 @@
+// --- GLOBAL ROUTER & BOOTSTRAP ---
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+    const res = await originalFetch(...args);
+    if (res.status === 401) {
+        window.location.href = '/';
+    }
+    return res;
+};
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
+    
+    const navItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+    if (navItem) {
+        navItem.classList.add('active');
+    }
+
+    const loaders = {
+        // Research 2.0
+        'tab-dashboard': typeof loadAnalyticsDashboard === 'function' ? loadAnalyticsDashboard : (typeof loadChart === 'function' ? loadChart : null),
+        'tab-research-campaigns': typeof loadResearchCampaignsTab === 'function' ? loadResearchCampaignsTab : (typeof loadCampaignsList === 'function' ? loadCampaignsList : null),
+        'tab-query-studio': typeof loadQueryStudioDropdown === 'function' ? loadQueryStudioDropdown : null,
+        'tab-companies': typeof loadCompanies === 'function' ? loadCompanies : null,
+        'tab-providers': typeof loadProvidersTab === 'function' ? loadProvidersTab : null,
+        'tab-analytics': typeof loadAnalytics === 'function' ? loadAnalytics : null,
+        
+        // Legacy Outreach
+        'tab-pending': typeof loadProspects === 'function' ? loadProspects : null,
+        'tab-approved': typeof loadApproved === 'function' ? loadApproved : null,
+        'tab-rejected': typeof loadRejected === 'function' ? loadRejected : null,
+        'tab-campaigns': typeof loadCampaignsTab === 'function' ? loadCampaignsTab : null,
+        'tab-templates': typeof loadTemplates === 'function' ? loadTemplates : null,
+        'tab-queue': typeof loadQueue === 'function' ? loadQueue : null,
+        'tab-send': () => {
+            if (typeof loadSendCampaigns === 'function') loadSendCampaigns();
+            if (typeof pollSendLogs === 'function') pollSendLogs();
+        },
+        'tab-quicksend': typeof loadQuickSend === 'function' ? loadQuickSend : null,
+        'tab-archive': typeof loadArchive === 'function' ? loadArchive : null,
+        
+        // System
+        'tab-settings': typeof loadSettings === 'function' ? loadSettings : null,
+        'tab-research': () => {
+            if (typeof loadQueries === 'function') loadQueries();
+            if (typeof loadQueryHistory === 'function') loadQueryHistory();
+            if (typeof pollResearchLogs === 'function') pollResearchLogs();
+        }
+    };
+
+    if (loaders[tabId]) {
+        loaders[tabId]();
+    } else {
+        // Fallback or no loader
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab(item.dataset.tab);
+        });
+    });
+
+    let defaultTab = null;
+    const navItems = document.querySelectorAll('.nav-item');
+    for (const item of navItems) {
+        if (document.getElementById(item.dataset.tab)) {
+            defaultTab = item.dataset.tab;
+            break;
+        }
+    }
+    
+    if (defaultTab) {
+        switchTab(defaultTab);
+    }
+    
+    if (typeof loadStatus === 'function') loadStatus();
+});

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import sqlite3
 import subprocess
 import csv
+import json
 import io
 import hashlib
 import secrets
@@ -1576,6 +1577,550 @@ async def scheduler_loop():
             print(f"Scheduler error: {e}")
             
         await asyncio.sleep(60)
+
+
+# ==============================================================================
+# P5.3C: Orchestrator Endpoints
+# ==============================================================================
+
+@app.get("/api/orchestrator/pipeline_status")
+def orchestrator_pipeline_status(product_id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    
+    q_discovered = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_sources ps ON p.id = ps.prospect_id JOIN query_runs qr ON ps.query_run_id = qr.run_id JOIN campaign_queries cq ON qr.target_key = cq.target_key JOIN research_campaigns rc ON cq.campaign_id = rc.id WHERE rc.product_id = ?"
+    discovered = db.connection.execute(q_discovered, (product_id,)).fetchone()[0] or 0
+    
+    q_qualified = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
+    qualified = db.connection.execute(q_qualified, (product_id,)).fetchone()[0] or 0
+    
+    q_rejected = "SELECT count(distinct p.id) FROM prospects p WHERE p.qualification_status = 'REJECTED' OR p.qualification_status = 'UNQUALIFIED'"
+    rejected = db.connection.execute(q_rejected).fetchone()[0] or 0
+    
+    q_approved = "SELECT count(*) FROM product_campaigns WHERE product_id = ? AND status = 'APPROVED'"
+    approved = db.connection.execute(q_approved, (product_id,)).fetchone()[0] or 0
+    
+    exported = 0
+    
+    return {
+        "discovered": discovered,
+        "qualified": qualified,
+        "rejected": rejected,
+        "approved": approved,
+        "exported": exported
+    }
+
+@app.post("/api/orchestrator/evaluate_fit")
+def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    product_id = payload.get("product_id")
+    if not product_id:
+         raise HTTPException(status_code=400, detail="Missing product_id")
+    db = OutreachDatabase(DB_PATH)
+    q = "SELECT COUNT(*) FROM prospect_product_fit WHERE product_id = ? AND fit_status = 'FIT'"
+    count = db.connection.execute(q, (product_id,)).fetchone()[0]
+    
+    return {"success": True, "stats": {"qualified": count}}
+
+@app.get("/api/orchestrator/evidence")
+def orchestrator_evidence(product_id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    q = "SELECT p.id, p.company_name, p.target_url, pf.fit_status, pf.reason, pf.matched_signals, pf.evidence_reviewed_at FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
+    rows = db.connection.execute(q, (product_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+@app.post("/api/orchestrator/prospect/{id}/review")
+def orchestrator_review_prospect(id: int, payload: dict, user: dict = Depends(get_current_user)):
+    action = payload.get("action")
+    db = OutreachDatabase(DB_PATH)
+    if action == "APPROVE":
+        db.connection.execute("UPDATE prospect_product_fit SET evidence_reviewed_at = ? WHERE prospect_id = ?", (datetime.now(timezone.utc).isoformat(), id))
+    elif action == "REJECT":
+        reason = payload.get("reason", "Manual Override")
+        db.connection.execute("UPDATE prospects SET qualification_status = 'REJECTED', rejection_reason = ? WHERE id = ?", (reason, id))
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    db.connection.commit()
+    return {"success": True}
+
+@app.post("/api/orchestrator/auto_pilot")
+def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    product_id = payload.get("product_id")
+    if not product_id:
+         raise HTTPException(status_code=400, detail="Missing product_id")
+         
+    import sqlite3
+    from product_intelligence.campaign_builder import create_campaign_from_product
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    product = conn.execute("SELECT status FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not product or product[0] != "READY":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Questo prodotto non è ancora stato analizzato dall'IA. Vai nella tab 'Sell a Product', seleziona il prodotto e clicca 'Analyze Product / Market' prima di avviare l'Auto-Pilot.")
+
+    rc = conn.execute("SELECT id FROM research_campaigns WHERE product_id = ? ORDER BY id DESC LIMIT 1", (product_id,)).fetchone()
+    if not rc:
+        rc_id = create_campaign_from_product(str(DB_PATH), product_id)
+    else:
+        rc_id = rc[0]
+        
+    if not rc_id:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Could not create campaign for this product.")
+        
+    conn.execute("UPDATE research_campaigns SET status = 'RUNNING' WHERE id = ?", (rc_id,))
+    conn.commit()
+    conn.close()
+    
+    def run_auto_pilot(db_path_str: str, prod_id: int, camp_id: int):
+        import subprocess
+        from pathlib import Path
+        from datetime import datetime, timezone
+        from product_intelligence.agent import ProductIntelligenceAgent
+        
+        log_path = Path(db_path_str).parent / f"campaign_{camp_id}_osint.log"
+        global_log = Path(db_path_str).parent / "system_logs.log"
+        
+        def write_log(msg):
+            timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            line = f"[{timestamp}] [Auto-Pilot {camp_id}] {msg}\n"
+            with open(log_path, "a") as f: f.write(line)
+            with open(global_log, "a") as f: f.write(line)
+            
+        write_log(f"--- ENGAGING AUTO-PILOT FOR CAMPAIGN {camp_id} ---")
+        
+        venv_python = ROOT / ".venv" / "bin" / "python"
+        py_bin = str(venv_python) if venv_python.exists() else "python3"
+        cmd = [py_bin, "-u", "public_osint_market_research.py", "--campaign-id", str(camp_id)]
+        
+        write_log("Running OSINT Discovery...")
+        
+        with open(log_path, "a") as log_file:
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=str(ROOT), text=True)
+            for line in iter(process.stdout.readline, ''):
+                log_file.write(line)
+                log_file.flush()
+                with open(global_log, "a") as gf: gf.write(line)
+            process.stdout.close()
+            returncode = process.wait()
+        
+        write_log(f"OSINT Discovery completed with code {returncode}. Starting AI Evaluation...")
+        
+        write_log("OSINT Discovery completed. Evaluation is performed inline.")
+        
+        # 3. Auto-Approve (Confidence >= 75)
+        import sqlite3
+        conn2 = sqlite3.connect(db_path_str)
+        conn2.execute("UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND confidence_score >= 75", (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id))
+        conn2.commit()
+        
+        # 4. Finish
+        conn2.execute("UPDATE research_campaigns SET status = 'COMPLETED' WHERE id = ?", (camp_id,))
+        conn2.commit()
+        conn2.close()
+        write_log("Auto-Pilot sequence complete.")
+            
+    background_tasks.add_task(run_auto_pilot, str(DB_PATH), product_id, rc_id)
+    return {"success": True, "message": "Auto-Pilot started!", "campaign_id": rc_id}
+
+
+# ==============================================================================
+# P5.1: Product Endpoints
+# ==============================================================================
+
+from pydantic import BaseModel
+
+class ProductCreateRequest(BaseModel):
+    name: str
+
+class ProductSourceRequest(BaseModel):
+    source_type: str
+    content: str
+
+@app.post("/api/products")
+def api_create_product(req: ProductCreateRequest, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import create_product
+    return create_product(str(DB_PATH), req.name)
+
+@app.get("/api/products")
+def api_list_products(user: dict = Depends(get_current_user)):
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM products ORDER BY updated_at_utc DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/products/{id}")
+def api_get_product(id: int, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import get_product
+    p = get_product(str(DB_PATH), id)
+    if not p:
+        raise HTTPException(404, "Not found")
+    return p
+
+@app.post("/api/products/{id}/sources")
+def api_add_product_source(id: int, req: ProductSourceRequest, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import add_source
+    from product_intelligence.extractor import extract_from_text, extract_from_url
+    
+    if req.source_type == "URL":
+        try:
+            source_content = extract_from_url(req.content)
+        except Exception as e:
+            raise HTTPException(400, f"Could not extract content from URL: {str(e)}")
+    else:
+        source_content = extract_from_text(req.content, "Pasted Text")
+        
+    src = add_source(
+        str(DB_PATH), 
+        product_id=id,
+        source_type=source_content.source_type.value,
+        source_name=source_content.source_name,
+        source_url=source_content.source_url,
+        extracted_text=source_content.extracted_text,
+        content_hash=source_content.content_hash,
+        language=source_content.language
+    )
+    return {"success": True, "source_id": src["id"]}
+
+@app.get("/api/products/{id}/sources")
+def api_get_product_sources(id: int, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import list_sources
+    return list_sources(str(DB_PATH), id)
+
+@app.post("/api/products/{id}/analyze")
+def api_analyze_product(id: int, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import get_product, set_product_status
+    p = get_product(str(DB_PATH), id)
+    if not p:
+        raise HTTPException(404, "Not found")
+    
+    set_product_status(str(DB_PATH), id, "ANALYZING")
+    
+    def run_analysis(db_path_str: str, prod_id: int):
+        import logging
+        from pathlib import Path
+        from datetime import datetime, timezone
+        from product_intelligence.provider import get_ai_provider
+        from product_intelligence.agent import ProductIntelligenceAgent
+        from product_intelligence.store import get_sources_with_text, save_product_analysis, set_product_status
+        from product_intelligence.models import ProductSourceContent, SourceType
+        
+        log_path = Path(db_path_str).parent / f"product_{prod_id}_analysis.log"
+        global_log_path = Path(db_path_str).parent / "system_logs.log"
+        
+        def write_log(msg):
+            timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            line = f"[{timestamp}] [Analysis Product {prod_id}] {msg}\n"
+            with open(log_path, "a") as f: f.write(line)
+            with open(global_log_path, "a") as f: f.write(line)
+            
+        write_log("--- INITIATING PRODUCT ANALYSIS ---")
+        
+        try:
+            sources_dicts = get_sources_with_text(db_path_str, prod_id)
+            if not sources_dicts:
+                msg = "No sources provided."
+                write_log(f"ERROR: {msg}")
+                set_product_status(db_path_str, prod_id, "FAILED", msg)
+                return
+                
+            sources = []
+            write_log(f"Found {len(sources_dicts)} sources to extract.")
+            
+            for s in sources_dicts:
+                st = s["source_type"].upper() if s["source_type"] else "TEXT"
+                if st == "WEBSITE": st = "URL"
+                try:
+                    st_enum = SourceType(st)
+                except ValueError:
+                    st_enum = SourceType.TEXT
+                    
+                sources.append(ProductSourceContent(
+                    source_type=st_enum,
+                    source_name=s["source_name"] or "Unknown",
+                    source_url=s["source_url"],
+                    extracted_text=s["extracted_text"] or "",
+                    content_hash=s["content_hash"] or ""
+                ))
+                write_log(f"Loaded source: {s['source_name']} (Type: {st})")
+                
+            write_log("Connecting to AI Provider...")
+            provider = get_ai_provider(db_path_str)
+            write_log(f"Provider selected: {provider.provider_name} ({provider.model_name})")
+            
+            agent = ProductIntelligenceAgent(provider)
+            write_log("Synthesizing market intelligence and extracting features...")
+            profile = agent.analyse(sources)
+            
+            write_log("Analysis successful! Saving profile...")
+            save_product_analysis(db_path_str, prod_id, profile, provider.provider_name, provider.model_name)
+            write_log("--- PRODUCT IS READY ---")
+        except Exception as e:
+            err_str = str(e)
+            logging.error(f"Analysis failed: {err_str}")
+            write_log(f"CRITICAL ERROR: {err_str}")
+            set_product_status(db_path_str, prod_id, "FAILED", err_str)
+            
+    background_tasks.add_task(run_analysis, str(DB_PATH), id)
+    return {"success": True, "status": "ANALYZING"}
+
+@app.get("/api/system_logs")
+def api_get_system_logs(user: dict = Depends(get_current_user)):
+    from pathlib import Path
+    log_path = DB_PATH.parent / "system_logs.log"
+    if not log_path.exists():
+        return {"logs": "System log is empty. Waiting for background tasks..."}
+    with open(log_path, "r") as f:
+        lines = f.readlines()
+        return {"logs": "".join(lines[-200:])}
+
+@app.get("/api/products/{id}/logs")
+def api_get_product_logs(id: int, user: dict = Depends(get_current_user)):
+    from pathlib import Path
+    log_path = DB_PATH.parent / f"product_{id}_analysis.log"
+    if not log_path.exists():
+        raise HTTPException(404, "Log not found")
+    with open(log_path, "r") as f:
+        return {"logs": f.read()}
+
+# END P5.1 ENDPOINTS
+
+# ==============================================================================
+# P5.3B: SALES CAMPAIGN & SEQUENCE ENDPOINTS
+# ==============================================================================
+from product_intelligence.sales_strategy_agent import SalesStrategyAgent, EmailSequenceAgent
+from product_intelligence.sales_campaign_store import (
+    upsert_strategy, upsert_product_campaign, save_sequence_messages,
+    get_product_campaign, get_strategy_by_identity, list_product_campaigns
+)
+from pydantic import BaseModel
+from typing import List, Optional
+
+class StrategyGenerateRequest(BaseModel):
+    product_id: int
+    research_campaign_id: int
+    market: str
+    language: str
+    target_segment: str
+    buyer_role: str
+
+class CampaignGenerateRequest(BaseModel):
+    product_id: int
+    research_campaign_id: int
+    market: str
+    language: str
+    target_segment: str
+    buyer_role: str
+    sequence_length: int = 4
+
+class SequenceMessageUpdate(BaseModel):
+    id: Optional[int] = None
+    sequence_order: int
+    subject: str
+    body: str
+    delay_days: int
+
+class UpdateMessagesRequest(BaseModel):
+    messages: List[SequenceMessageUpdate]
+
+@app.get("/api/research_campaigns/{id}/logs")
+def api_get_campaign_logs(id: int, user: dict = Depends(get_current_user)):
+    from pathlib import Path
+    log_path = DB_PATH.parent / f"campaign_{id}_osint.log"
+    if not log_path.exists():
+        return {"logs": "Loading logs..."}
+    with open(log_path, "r") as f:
+        return {"logs": f.read()}
+
+@app.get("/api/research_campaigns/{id}/contexts")
+def get_research_campaign_contexts(id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    camp = db.connection.execute("SELECT product_id, icp_id FROM research_campaigns WHERE id=?", (id,)).fetchone()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+        
+    icp = db.connection.execute("SELECT * FROM ideal_customer_profiles WHERE id=?", (camp["icp_id"],)).fetchone()
+    if not icp:
+        raise HTTPException(status_code=404, detail="ICP not found")
+        
+    def parse_list(val):
+        if not val: return []
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            return [x.strip() for x in val.split(',') if x.strip()]
+            
+    roles = parse_list(icp["roles"])
+    industries = parse_list(icp["industries"])
+    countries = parse_list(icp["countries"] if "countries" in icp.keys() else icp.get("locations", ""))
+    languages = parse_list(icp["languages"])
+    
+    import itertools
+    contexts = []
+    
+    # If any list is empty, we use a default list with one empty string element
+    # so itertools.product still generates combinations
+    _markets = countries if countries else ["Global"]
+    _languages = languages if languages else ["English"]
+    _segments = industries if industries else ["Any Segment"]
+    _roles = roles if roles else ["Any Role"]
+    
+    for m, l, s, r in itertools.product(_markets, _languages, _segments, _roles):
+        contexts.append({
+            "market": m,
+            "language": l,
+            "target_segment": s,
+            "buyer_role": r
+        })
+    
+    return {
+        "product_id": camp["product_id"],
+        "contexts": contexts
+    }
+
+@app.post("/api/sales_strategy/generate")
+def generate_sales_strategy(req: StrategyGenerateRequest, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    
+    # Validation 1: Product/RC consistency
+    camp = db.connection.execute("SELECT product_id FROM research_campaigns WHERE id=?", (req.research_campaign_id,)).fetchone()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Research Campaign not found")
+    if camp["product_id"] != req.product_id:
+        raise HTTPException(status_code=400, detail="Research Campaign does not belong to the given Product")
+        
+    # Get Product profile
+    from product_intelligence.store import ProductIntelligenceStore
+    pi_store = ProductIntelligenceStore()
+    product = pi_store.get_product(str(DB_PATH), req.product_id)
+    if not product or not product.get("profile"):
+        raise HTTPException(status_code=400, detail="Product Profile not available")
+        
+    # Generate Strategy
+    agent = SalesStrategyAgent(str(DB_PATH))
+    strat = agent.generate(
+        product_profile=product["profile"],
+        market=req.market,
+        language=req.language,
+        target_segment=req.target_segment,
+        buyer_role=req.buyer_role
+    )
+    
+    if strat.get("status") == "FAILED":
+        raise HTTPException(status_code=500, detail=strat.get("error", "Strategy generation failed"))
+        
+    # Inject identifiers and upsert
+    strat["product_id"] = req.product_id
+    strat["research_campaign_id"] = req.research_campaign_id
+    sid = upsert_strategy(str(DB_PATH), strat)
+    
+    return {"success": True, "strategy_id": sid, "strategy": strat}
+
+@app.get("/api/sales_strategy")
+def get_sales_strategy(product_id: int, research_campaign_id: int, market: str, language: str, target_segment: str, buyer_role: str, user: dict = Depends(get_current_user)):
+    strat = get_strategy_by_identity(str(DB_PATH), product_id, research_campaign_id, market, language, target_segment, buyer_role)
+    if not strat:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return strat
+
+@app.post("/api/product_campaigns/generate")
+def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    
+    # Validations
+    camp = db.connection.execute("SELECT product_id FROM research_campaigns WHERE id=?", (req.research_campaign_id,)).fetchone()
+    if not camp or camp["product_id"] != req.product_id:
+        raise HTTPException(status_code=400, detail="Invalid Product / Research Campaign mismatch")
+        
+    strat = get_strategy_by_identity(str(DB_PATH), req.product_id, req.research_campaign_id, req.market, req.language, req.target_segment, req.buyer_role)
+    if not strat:
+        raise HTTPException(status_code=400, detail="Sales Strategy not found. Please generate it first.")
+        
+    from product_intelligence.store import ProductIntelligenceStore
+    pi_store = ProductIntelligenceStore()
+    product = pi_store.get_product(str(DB_PATH), req.product_id)
+    
+    # Save DRAFT campaign
+    cid = upsert_product_campaign(str(DB_PATH), req.dict())
+    
+    # Generate Sequence
+    agent = EmailSequenceAgent(str(DB_PATH))
+    seq = agent.generate(strat, product["profile"], req.sequence_length)
+    
+    if seq.get("status") == "FAILED":
+        # We allow re-generation on FAILED, so we don't abort, just bubble error
+        raise HTTPException(status_code=500, detail=seq.get("error", "Sequence generation failed"))
+        
+    # Save Messages
+    save_sequence_messages(str(DB_PATH), cid, seq["messages"])
+    
+    return {"success": True, "campaign_id": cid}
+
+@app.get("/api/product_campaigns/{id}")
+def get_product_campaign_by_id(id: int, user: dict = Depends(get_current_user)):
+    camp = get_product_campaign(str(DB_PATH), id)
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return camp
+
+@app.get("/api/product_campaigns")
+def list_prod_campaigns(product_id: int = None, user: dict = Depends(get_current_user)):
+    return list_product_campaigns(str(DB_PATH), product_id)
+
+@app.put("/api/product_campaigns/{id}/messages")
+def update_product_campaign_messages(id: int, req: UpdateMessagesRequest, user: dict = Depends(get_current_user)):
+    camp = get_product_campaign(str(DB_PATH), id)
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if camp["status"] != "DRAFT":
+        raise HTTPException(status_code=400, detail=f"Cannot edit messages because campaign is {camp['status']}")
+        
+    if len(req.messages) != camp["sequence_length"]:
+        raise HTTPException(status_code=400, detail=f"Expected {camp['sequence_length']} messages, got {len(req.messages)}")
+        
+    for msg in req.messages:
+        if not msg.subject.strip() or not msg.body.strip():
+            raise HTTPException(status_code=400, detail="Subject and Body cannot be empty")
+        
+        # We could also validate placeholders here, but EmailSequenceAgent checks generation.
+        # Strict user constraints say "placeholders validi". Let's do a basic check.
+        import re
+        placeholders = re.findall(r'\{\{([^}]+)\}\}', msg.body)
+        allowed = {"first_name", "last_name", "company_name", "industry", "role", "matched_signal", "why_matched", "market"}
+        for p in placeholders:
+            if p not in allowed:
+                raise HTTPException(status_code=400, detail=f"Invalid placeholder: {p}")
+                
+    save_sequence_messages(str(DB_PATH), id, [m.dict() for m in req.messages])
+    return {"success": True}
+
+@app.post("/api/product_campaigns/{id}/approve")
+def approve_product_campaign(id: int, user: dict = Depends(get_current_user)):
+    camp = get_product_campaign(str(DB_PATH), id)
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if camp["status"] != "DRAFT":
+        raise HTTPException(status_code=400, detail=f"Campaign is already {camp['status']}")
+        
+    if not camp.get("strategy"):
+        raise HTTPException(status_code=400, detail="Strategy is missing")
+        
+    msgs = camp.get("messages", [])
+    if len(msgs) != camp["sequence_length"]:
+        raise HTTPException(status_code=400, detail=f"Sequence length mismatch. Expected {camp['sequence_length']}, got {len(msgs)}")
+        
+    for msg in msgs:
+        if not msg.get("subject", "").strip() or not msg.get("body", "").strip():
+            raise HTTPException(status_code=400, detail="Found empty subject or body")
+            
+    db = OutreachDatabase(DB_PATH)
+    db.connection.execute("UPDATE product_campaigns SET status='APPROVED', updated_at_utc=? WHERE id=?", (datetime.now(timezone.utc).isoformat(), id))
+    db.connection.commit()
+    
+    return {"success": True, "status": "APPROVED"}
+
+
+
 
 @app.on_event("startup")
 async def startup_event():

@@ -312,7 +312,7 @@ def main():
     for q in queries:
         report.append(f"| {q['id']} | {q['provider']} | `{q['query']}` | {q['status']} | {q['duration_ms']} | {q['raw_results']} | {q['unique_domains']} | {q['emails']} | {q['h_rel']} |")
 
-    with open("/Users/tonic/.gemini/antigravity-ide/brain/7765947b-1da0-450c-87e9-89e52f935579/baseline_report_v3.md", "w") as f:
+    with open("baseline_report_v3.md", "w") as f:
         f.write("\n".join(report))
         
     print("Report generated at baseline_report_v3.md")

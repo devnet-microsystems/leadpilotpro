@@ -2,14 +2,15 @@ import imaplib
 import email
 import email.policy
 import logging
+import os
 from pathlib import Path
 from outreach_sender import OutreachDatabase
 import re
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-ROOT = Path("/Users/tonic/Downloads/public_business_lead_collector 3")
-DB_PATH = ROOT / "outreach_queue.sqlite3"
+ROOT = Path(__file__).resolve().parent
+DB_PATH = Path(os.environ.get("LEADPILOT_DB_PATH") or (ROOT / "outreach_queue.sqlite3"))
 
 def extract_email_address(from_header: str) -> str:
     match = re.search(r'[\w\.-]+@[\w\.-]+', from_header)

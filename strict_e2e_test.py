@@ -7,8 +7,10 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-BASE_URL = "http://127.0.0.1:8001"
-DB_PATH = "outreach_queue.sqlite3"
+# BASE_URL is configurable via env var; default to 8000 (the real app port).
+# Previously hardcoded to 8001 — that was a test-harness bug, not an app bug.
+BASE_URL = os.environ.get("LEADPILOT_BASE_URL", "http://127.0.0.1:8000")
+DB_PATH = os.environ.get("LEADPILOT_DB_PATH", "outreach_queue.sqlite3")
 
 def inject_session():
     token = str(uuid.uuid4())

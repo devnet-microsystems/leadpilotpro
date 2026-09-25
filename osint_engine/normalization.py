@@ -16,6 +16,11 @@ DISALLOWED_HOST_SUFFIXES = {
     "zhihu.com", "stackoverflow.com", "atlassian.com", "hubspot.com"
 }
 
+DISPOSABLE_DOMAINS = {
+    "mailinator.com", "tempmail.com", "10minutemail.com", "guerrillamail.com",
+    "yopmail.com", "temp-mail.org", "throwawaymail.com", "dispostable.com"
+}
+
 class URLNormalizer:
     @staticmethod
     def normalize(url: str) -> str:

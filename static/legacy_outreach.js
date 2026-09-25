@@ -1,0 +1,1545 @@
+
+async function loadStatus() {
+    if (!document.getElementById('stat-total')) return;
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    document.getElementById('stat-total').innerText = data.total || 0;
+    document.getElementById('stat-pending').innerText = data.pending;
+    document.getElementById('stat-approved').innerText = data.approved;
+    document.getElementById('stat-sent').innerText = data.sent;
+
+    const select = document.getElementById('campaign-select');
+    const sendCampaignSelect = document.getElementById('send-campaign');
+    const targetCampaignSelect = document.getElementById('target-campaign');
+    const csvCampaignSelect = document.getElementById('csv-upload-campaign');
+    const manualCampaignSelect = document.getElementById('manual-lead-campaign');
+    const quickSendCampaignSelect = document.getElementById('quick-send-campaign-select');
+    
+    const currSelect = select ? select.value : '';
+    const currSend = sendCampaignSelect ? sendCampaignSelect.value : '';
+    const currTarget = targetCampaignSelect ? targetCampaignSelect.value : '';
+    const currCsv = csvCampaignSelect ? csvCampaignSelect.value : '';
+    const currManual = manualCampaignSelect ? manualCampaignSelect.value : '';
+    const currQuickSend = quickSendCampaignSelect ? quickSendCampaignSelect.value : '';
+
+    if (select) select.innerHTML = '<option value="">Select campaign...</option>';
+    if (sendCampaignSelect) sendCampaignSelect.innerHTML = '<option value="">Select campaign...</option>';
+    if (targetCampaignSelect) targetCampaignSelect.innerHTML = '<option value="">Select Target Campaign</option>';
+    if (csvCampaignSelect) csvCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+    if (manualCampaignSelect) manualCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+    if (quickSendCampaignSelect) quickSendCampaignSelect.innerHTML = '<option value="">Select target campaign...</option>';
+    
+    data.campaigns.forEach(c => {
+        if (select) {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.innerText = c;
+            select.appendChild(opt);
+        }
+        
+        if (sendCampaignSelect) {
+            const optSend = document.createElement('option');
+            optSend.value = c;
+            optSend.innerText = c;
+            sendCampaignSelect.appendChild(optSend);
+        }
+        
+        if (targetCampaignSelect) {
+            const optTarget = document.createElement('option');
+            optTarget.value = c;
+            optTarget.innerText = c;
+            targetCampaignSelect.appendChild(optTarget);
+        }
+        
+        if (csvCampaignSelect) {
+            const optCsv = document.createElement('option');
+            optCsv.value = c;
+            optCsv.innerText = c;
+            csvCampaignSelect.appendChild(optCsv);
+        }
+        
+        if (manualCampaignSelect) {
+            const optManual = document.createElement('option');
+            optManual.value = c;
+            optManual.innerText = c;
+            manualCampaignSelect.appendChild(optManual);
+        }
+
+        if (quickSendCampaignSelect) {
+            const optQuickSend = document.createElement('option');
+            optQuickSend.value = c;
+            optQuickSend.innerText = c;
+            quickSendCampaignSelect.appendChild(optQuickSend);
+        }
+    });
+
+    if (select && currSelect) select.value = currSelect;
+    if (sendCampaignSelect && currSend) sendCampaignSelect.value = currSend;
+    if (targetCampaignSelect && currTarget) targetCampaignSelect.value = currTarget;
+    if (csvCampaignSelect && currCsv) csvCampaignSelect.value = currCsv;
+    if (manualCampaignSelect && currManual) manualCampaignSelect.value = currManual;
+    if (quickSendCampaignSelect && currQuickSend) quickSendCampaignSelect.value = currQuickSend;
+}
+
+async function loadTemplates() {
+    const res = await fetch('/api/templates');
+    const templates = await res.json();
+    
+    const select = document.getElementById('send-template');
+    if(select) select.innerHTML = '<option value="">Select template...</option>';
+    
+    const sidebar = document.getElementById('template-list-sidebar');
+    if(sidebar) sidebar.innerHTML = '';
+    
+    const campTemplateSelect = document.getElementById('new-campaign-template');
+    if(campTemplateSelect) campTemplateSelect.innerHTML = '<option value="">Select template...</option>';
+    
+    const testTemplateSelect = document.getElementById('test-template');
+    if(testTemplateSelect) testTemplateSelect.innerHTML = '<option value="">Select template...</option>';
+    
+    templates.forEach(t => {
+        if(campTemplateSelect) {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.innerText = t;
+            campTemplateSelect.appendChild(opt);
+        }
+        
+        if(testTemplateSelect) {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.innerText = t;
+            testTemplateSelect.appendChild(opt);
+        }
+        
+        // Dropdown
+        if(select) {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.innerText = t;
+            select.appendChild(opt);
+        }
+        
+        if(sidebar) {
+            // Sidebar button
+            const btn = document.createElement('button');
+            btn.innerText = t;
+            btn.style.background = 'rgba(255,255,255,0.05)';
+            btn.style.border = '1px solid var(--border)';
+            btn.style.color = 'var(--text)';
+            btn.style.textAlign = 'left';
+            btn.onclick = () => viewTemplate(t);
+            sidebar.appendChild(btn);
+        }
+    });
+}
+
+async function viewTemplate(name) {
+    const res = await fetch(`/api/templates/${encodeURIComponent(name)}`);
+    if (res.ok) {
+        const data = await res.json();
+        document.getElementById('active-template-name').value = name;
+        document.getElementById('active-template-name').disabled = true;
+        document.getElementById('active-template-content').value = data.content;
+    } else {
+        alert("Failed to load template");
+    }
+}
+
+function newTemplate() {
+    document.getElementById('active-template-name').value = "";
+    document.getElementById('active-template-name').disabled = false;
+    document.getElementById('active-template-content').value = "Subject: Hello from {company_name}\n\nHi {company_name},\n\n...";
+    document.getElementById('active-template-name').focus();
+}
+
+async function saveActiveTemplate() {
+    const name = document.getElementById('active-template-name').value.trim();
+    const content = document.getElementById('active-template-content').value;
+    if (!name) {
+        alert("Please enter a template name");
+        return;
+    }
+    
+    const res = await fetch(`/api/templates/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content})
+    });
+    
+    if (res.ok) {
+        alert("Template saved!");
+        loadTemplates();
+        document.getElementById('active-template-name').disabled = true;
+    } else {
+        alert("Failed to save template");
+    }
+}
+
+async function deleteActiveTemplate() {
+    const name = document.getElementById('active-template-name').value.trim();
+    if (!name) return;
+    
+    if (!confirm(`Delete template '${name}'?`)) return;
+    
+    const res = await fetch(`/api/templates/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
+    });
+    
+    if (res.ok) {
+        document.getElementById('active-template-name').value = "";
+        document.getElementById('active-template-name').disabled = true;
+        document.getElementById('active-template-content').value = "";
+        loadTemplates();
+    } else {
+        alert("Failed to delete template");
+    }
+}
+
+async function generateWithAi() {
+    if (!document.getElementById('active-template-name').value) {
+        alert("Please create a new template first.");
+        return;
+    }
+    
+    const context = document.getElementById('ai-prompt-input').value.trim();
+    if (!context) {
+        alert("Please enter what the email should be about.");
+        return;
+    }
+
+    const prevText = document.getElementById('active-template-content').value;
+    document.getElementById('active-template-content').value = "Generating with AI... Please wait...";
+    document.getElementById('btn-generate-ai').disabled = true;
+    
+    try {
+        const res = await fetch('/api/generate_template', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ context: context })
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            document.getElementById('active-template-content').value = data.content;
+        } else {
+            alert(data.detail || "Generation failed.");
+            document.getElementById('active-template-content').value = prevText;
+        }
+    } catch (e) {
+        alert("Error contacting server.");
+        document.getElementById('active-template-content').value = prevText;
+    } finally {
+        document.getElementById('btn-generate-ai').disabled = false;
+    }
+}
+
+async function loadQueries() {
+    const res = await fetch('/api/queries');
+    const queries = await res.json();
+    const tbody = document.getElementById('queries-tbody');
+    tbody.innerHTML = '';
+    
+    if (queries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">No queries configured.</td></tr>';
+        return;
+    }
+
+    queries.forEach(q => {
+        const tr = document.createElement('tr');
+        const escapedQ = escapeHtml(q);
+        tr.innerHTML = `
+            <td><input type="checkbox" class="query-cb" value="${escapedQ.replace(/"/g, '&quot;')}"></td>
+            <td>${escapedQ}</td>
+            <td>
+                <button style="background:transparent; border:1px solid var(--primary); color:var(--primary); padding:0.25rem 0.5rem; margin-right:0.25rem; font-size:1rem;" title="Edit" onclick="editQuery('${escapedQ.replace(/'/g, "\\'")}')">✏️</button>
+                <button style="background:transparent; border:1px solid #ef4444; color:#ef4444; padding:0.25rem 0.5rem; font-size:1rem;" title="Delete" onclick="deleteQuery('${escapedQ.replace(/'/g, "\\'")}')">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function addQuery() {
+    const query = document.getElementById('new-query').value.trim();
+    if (!query) return;
+    
+    await fetch('/api/queries', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query})
+    });
+    
+    document.getElementById('new-query').value = '';
+    loadQueries();
+}
+
+async function deleteQuery(query) {
+    if (!confirm(`Delete query: "${query}"?`)) return;
+    
+    await fetch('/api/queries', {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query})
+    });
+    
+    loadQueries();
+}
+
+async function editQuery(oldQuery) {
+    const newQuery = prompt("Edit query target:", oldQuery);
+    if (!newQuery || newQuery.trim() === oldQuery) return;
+    
+    await fetch('/api/queries', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({old_query: oldQuery, new_query: newQuery.trim()})
+    });
+    loadQueries();
+}
+
+async function loadQueryHistory() {
+    const res = await fetch('/api/query_history');
+    const history = await res.json();
+    const tbody = document.getElementById('history-tbody');
+    tbody.innerHTML = '';
+    
+    if (history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">No history recorded yet.</td></tr>';
+        return;
+    }
+
+    history.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="white-space:nowrap; color:var(--text-muted);">${row.executed_at_utc.substring(0, 19).replace('T', ' ')}</td>
+            <td>${escapeHtml(row.query)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadProspects() {
+    let url = '/api/prospects?status=pending_review';
+    const dateFrom = document.getElementById('pending-date-from');
+    const dateTo = document.getElementById('pending-date-to');
+    if (dateFrom && dateFrom.value) url += `&date_from=${dateFrom.value}`;
+    if (dateTo && dateTo.value) url += `&date_to=${dateTo.value}`;
+    
+    const res = await fetch(url);
+    const data = await res.json();
+    const tbody = document.getElementById('prospects-tbody');
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No pending prospects found.</td></tr>';
+        return;
+    }
+
+    data.forEach(p => {
+        const tr = document.createElement('tr');
+        let scoreBadge = '';
+        if (p.relevance_score !== null) {
+            if (p.relevance_score >= 80) scoreBadge = `<span class="badge badge-green" style="padding:0.25rem 0.5rem; border-radius:4px; font-weight:bold; font-size:0.75rem; background:#10b981; color:white;">${p.relevance_score}</span>`;
+            else if (p.relevance_score >= 40) scoreBadge = `<span class="badge badge-blue" style="padding:0.25rem 0.5rem; border-radius:4px; font-weight:bold; font-size:0.75rem; background:#3b82f6; color:white;">${p.relevance_score}</span>`;
+            else scoreBadge = `<span class="badge badge-red" style="padding:0.25rem 0.5rem; border-radius:4px; font-weight:bold; font-size:0.75rem; background:#ef4444; color:white;">${p.relevance_score}</span>`;
+        } else {
+            scoreBadge = `<span style="color:var(--text-muted); font-size:0.8rem;">-</span>`;
+        }
+
+        const safeCompany = p.company_name ? escapeHtml(p.company_name).replace(/'/g, "\\'") : '';
+        tr.innerHTML = `
+            <td><input type="checkbox" class="prospect-cb" value="${p.id}"></td>
+            <td>${scoreBadge}</td>
+            <td><strong>${p.business_email}</strong></td>
+            <td>${p.first_name || ''} ${p.last_name || ''}<br><span style="color:var(--text-muted); font-size:0.8rem;">${p.role || '-'}</span></td>
+            <td style="cursor:pointer;" onclick="editCompany(${p.id}, '${safeCompany}')">${escapeHtml(p.company_name || '-')} <span style="font-size:0.8rem; color:var(--text-muted)">✏️</span></td>
+            <td><span style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(p.source_file || '-')}</span></td>
+            <td style="font-size:0.85rem; max-width:250px;">${p.why_matched || '-'}</td>
+            <td>
+                <div style="display:flex; gap:0.5rem;">
+                    <button style="background:transparent; border:1px solid #10b981; color:#10b981; font-size:0.85rem; padding:0.25rem 0.5rem; border-radius:4px;" title="Approve this email" onclick="approveSingle(${p.id})">Approve</button>
+                    <button style="background:transparent; border:1px solid #ef4444; color:#ef4444; font-size:0.85rem; padding:0.25rem 0.5rem; border-radius:4px;" title="Reject this email" onclick="rejectSingle(${p.id})">Reject</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadApproved() {
+    let url = '/api/prospects?status=approved';
+    const dateFrom = document.getElementById('approved-date-from');
+    const dateTo = document.getElementById('approved-date-to');
+    if (dateFrom && dateFrom.value) url += `&date_from=${dateFrom.value}`;
+    if (dateTo && dateTo.value) url += `&date_to=${dateTo.value}`;
+    
+    const res = await fetch(url);
+    const data = await res.json();
+    const tbody = document.getElementById('approved-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No approved prospects ready to send.</td></tr>';
+        return;
+    }
+
+    data.forEach(p => {
+        const tr = document.createElement('tr');
+        const safeCompany = p.company_name ? escapeHtml(p.company_name).replace(/'/g, "\\'") : '';
+        const safeCampaign = p.campaign ? escapeHtml(p.campaign).replace(/'/g, "\\'") : '';
+        tr.innerHTML = `
+            <td>${p.id}</td>
+            <td style="cursor:pointer;" onclick="editCompany(${p.id}, '${safeCompany}')">${escapeHtml(p.company_name)} <span style="font-size:0.8rem; color:var(--text-muted)">✏️</span></td>
+            <td>${p.business_email}</td>
+            <td style="cursor:pointer;" onclick="editCampaign(${p.id}, '${safeCampaign}')">${escapeHtml(p.campaign)} <span style="font-size:0.8rem; color:var(--text-muted)">✏️</span></td>
+            <td>${p.reason_for_contact || ''}</td>
+            <td>
+                <button style="background:transparent; border:none; color:#ef4444; font-size:1.1rem;" title="Reject this email" onclick="rejectSingle(${p.id})">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function editCampaign(id, currentCampaign) {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const campaigns = data.campaigns || [];
+    
+    // Create a custom modal for the dropdown
+    const dialog = document.createElement('dialog');
+    dialog.style.padding = '1.5rem';
+    dialog.style.borderRadius = '8px';
+    dialog.style.border = '1px solid var(--border)';
+    dialog.style.background = 'var(--bg-secondary)';
+    dialog.style.color = 'var(--text)';
+    dialog.style.margin = 'auto';
+    dialog.style.position = 'fixed';
+    dialog.style.top = '50%';
+    dialog.style.left = '50%';
+    dialog.style.transform = 'translate(-50%, -50%)';
+    
+    let optionsHtml = '<option value="">(Create new or leave empty)</option>';
+    campaigns.forEach(c => {
+        optionsHtml += `<option value="${c}" ${c === currentCampaign ? 'selected' : ''}>${c}</option>`;
+    });
+
+    dialog.innerHTML = `
+        <h3 style="margin-top:0;">Edit Campaign</h3>
+        <select id="edit-campaign-select" style="width:100%; padding:0.5rem; margin-bottom:1rem;">
+            ${optionsHtml}
+        </select>
+        <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+            <button id="btn-edit-cancel" style="background:transparent; border:1px solid var(--border); padding:0.5rem 1rem;">Cancel</button>
+            <button id="btn-edit-save" style="background:var(--primary); color:black; padding:0.5rem 1rem;">Save</button>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    
+    document.getElementById('btn-edit-cancel').onclick = () => {
+        dialog.close();
+        dialog.remove();
+    };
+    
+    document.getElementById('btn-edit-save').onclick = async () => {
+        const newCampaign = document.getElementById('edit-campaign-select').value;
+        if (newCampaign && newCampaign !== currentCampaign) {
+            await fetch('/api/prospects/update_campaign', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id, campaign: newCampaign})
+            });
+            refreshAll();
+        }
+        dialog.close();
+        dialog.remove();
+    };
+}
+
+async function editCompany(id, currentName) {
+    const newName = prompt("Edit company name:", currentName);
+    if (newName !== null && newName !== currentName) {
+        await fetch('/api/prospects/update_company', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: id, company_name: newName})
+        });
+        refreshAll();
+    }
+}
+
+async function loadRejected() {
+    const res = await fetch('/api/prospects?status=rejected');
+    const data = await res.json();
+    const tbody = document.getElementById('rejected-tbody');
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No rejected leads.</td></tr>';
+        return;
+    }
+
+    data.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${p.id}</td>
+            <td>${p.company_name}</td>
+            <td>${p.business_email}</td>
+            <td><a href="${p.target_url}" target="_blank" style="color:var(--primary)">Link</a></td>
+            <td>${p.campaign}</td>
+            <td>
+                <button style="background:transparent; border:1px solid #10b981; color:#10b981; border-radius:4px; padding:0.25rem 0.5rem; cursor:pointer;" onclick="restoreSingle(${p.id})">Restore</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function restoreSingle(id) {
+    await fetch('/api/restore', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id})
+    });
+    refreshAll();
+}
+
+async function rejectSingle(id) {
+    if (!confirm("Are you sure you want to reject this email?")) return;
+    await fetch('/api/reject_selected', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: [id]})
+    });
+    refreshAll();
+}
+
+async function rejectSelected() {
+    const checkboxes = document.querySelectorAll('.prospect-cb:checked');
+    const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (ids.length === 0) {
+        alert("Please select at least one email to reject.");
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to reject ${ids.length} emails? They will be permanently hidden.`)) return;
+    
+    await fetch('/api/reject_selected', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids})
+    });
+    
+    document.getElementById('selectAllCheckbox').checked = false;
+    refreshAll();
+}
+
+function toggleSelectAll() {
+    const isChecked = document.getElementById('selectAllCheckbox').checked;
+    document.querySelectorAll('.prospect-cb').forEach(cb => cb.checked = isChecked);
+}
+
+async function loadCampaignsTab() {
+    const res = await fetch('/api/campaigns');
+    const data = await res.json();
+    const tbody = document.getElementById('campaigns-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No campaigns created yet.</td></tr>';
+        return;
+    }
+    
+    data.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${escapeHtml(c.name)}</strong></td>
+            <td>${escapeHtml(c.template)}</td>
+            <td>${c.created_at_utc.substring(0, 19).replace('T', ' ')}</td>
+            <td>
+                <button style="background:transparent; border:none; color:#ef4444; font-size:1.1rem; cursor:pointer;" onclick="deleteCampaign('${escapeHtml(c.name)}')">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function addCampaign() {
+    const name = document.getElementById('new-campaign-name').value.trim();
+    const template = document.getElementById('new-campaign-template').value;
+    
+    if (!name || !template) {
+        alert("Please provide both a name and a template.");
+        return;
+    }
+    
+    const res = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, template})
+    });
+    
+    if (res.ok) {
+        document.getElementById('new-campaign-name').value = '';
+        document.getElementById('new-campaign-template').value = '';
+        refreshAll();
+    } else {
+        const err = await res.json();
+        alert(err.detail || "Failed to create campaign");
+    }
+}
+
+async function deleteCampaign(name) {
+    if (!confirm(`Delete campaign '${name}'? This won't delete the emails, just the campaign configuration.`)) return;
+    await fetch(`/api/campaigns/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    refreshAll();
+}
+
+async function addManualLead() {
+    const email = document.getElementById('manual-lead-email').value;
+    const company = document.getElementById('manual-lead-company').value;
+    const campaign = document.getElementById('manual-lead-campaign').value;
+    
+    if (!email || !company) {
+        alert("Please enter both Email and Company Name.");
+        return;
+    }
+    
+    const btn = document.getElementById('btn-manual-add');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Adding...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/prospects/manual_add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ email: email, company_name: company, campaign: campaign })
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            document.getElementById('manual-lead-email').value = '';
+            document.getElementById('manual-lead-company').value = '';
+            loadProspects();
+            alert("Lead added successfully!");
+        } else {
+            alert(`Error: ${data.error || data.detail || 'Unknown error'}`);
+        }
+    } catch (err) {
+        alert("Failed to add lead: " + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function importCsv() {
+    const fileInput = document.getElementById('csv-upload-file');
+    const campaign = document.getElementById('csv-upload-campaign').value;
+    
+    if (!fileInput.files.length) {
+        alert("Please select a CSV file to upload.");
+        return;
+    }
+    if (!campaign) {
+        alert("Please select a target campaign for these leads.");
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    
+    reader.onload = async function(e) {
+        const csvContent = e.target.result;
+        const btn = document.getElementById('btn-import-csv');
+        btn.disabled = true;
+        btn.textContent = "Importing...";
+        
+        try {
+            const res = await fetch('/api/import_csv', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ campaign: campaign, csv_content: csvContent })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Import complete! Added: ${data.added}, Skipped/Duplicates: ${data.skipped}`);
+                fileInput.value = '';
+                loadProspects();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        } catch (err) {
+            alert(`Upload failed: ${err.message || err}\nMake sure the CSV is not too large and has valid UTF-8 encoding.`);
+            console.error("CSV Import Error:", err);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Upload & Import";
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function approveSelected() {
+    const checkboxes = document.querySelectorAll('.prospect-cb:checked');
+    const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    const targetCampaign = document.getElementById('target-campaign').value.trim();
+    
+    if (ids.length === 0) {
+        alert("Please select at least one email.");
+        return;
+    }
+    if (!targetCampaign) {
+        alert("Please select a Target Campaign name.");
+        return;
+    }
+    
+    const reason = prompt(`Approving ${ids.length} emails for campaign '${targetCampaign}'. Enter reason:`, "Manually selected via Dashboard");
+    if (!reason) return;
+    
+    await fetch('/api/approve_selected', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids, campaign: targetCampaign, reason})
+    });
+    
+    document.getElementById('selectAllCheckbox').checked = false;
+    document.getElementById('target-campaign').value = "";
+    refreshAll();
+}
+
+async function loadArchive() {
+    let url = '/api/archive?t=' + Date.now();
+    const dateFrom = document.getElementById('archive-date-from');
+    const dateTo = document.getElementById('archive-date-to');
+    if (dateFrom && dateFrom.value) url += `&date_from=${dateFrom.value}`;
+    if (dateTo && dateTo.value) url += `&date_to=${dateTo.value}`;
+    
+    const res = await fetch(url);
+    const data = await res.json();
+    const tbody = document.getElementById('archive-tbody');
+    const countSpan = document.getElementById('archive-count');
+    tbody.innerHTML = '';
+    
+    if (countSpan) countSpan.textContent = `(${data.length} total)`;
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No emails sent yet.</td></tr>';
+        return;
+    }
+
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+        
+        // We only allow follow-ups for leads that are in 'sent' state (not replied, unsubbed, etc)
+        let checkboxHtml = '';
+        if (row.prospect_status === 'sent' && row.prospect_id) {
+            checkboxHtml = `<input type="checkbox" class="archive-checkbox" value="${row.prospect_id}" onchange="updateArchiveRequeueButton()">`;
+        }
+        
+        let statusHtml = '';
+        if (row.prospect_status === 'replied') {
+            statusHtml = '<span style="background:#10b981; color:white; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">Replied</span>';
+        } else if (row.prospect_status === 'auto_reply') {
+            statusHtml = '<span style="background:#f59e0b; color:white; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">Auto-Reply</span>';
+        } else if (row.prospect_status === 'unsubscribed') {
+            statusHtml = '<span style="background:#ef4444; color:white; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">Unsubscribed</span>';
+        } else if (row.prospect_status === 'sent') {
+            statusHtml = '<span style="background:rgba(255,255,255,0.2); color:white; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.75rem;">Sent</span>';
+        }
+        
+        let actionHtml = '';
+        if (row.prospect_id && row.prospect_status === 'sent') {
+            actionHtml = `
+                <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                    <button style="background:transparent; border:1px solid #10b981; color:#10b981; padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="markReplied(${row.prospect_id})">✅ Replied</button>
+                    <button style="background:transparent; border:1px solid #ef4444; color:#ef4444; padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="markUnsubscribed(${row.prospect_id})">❌ Unsub</button>
+                </div>
+            `;
+        }
+
+        tr.innerHTML = `
+            <td>${checkboxHtml}</td>
+            <td style="white-space:nowrap">${row.sent_at_utc.substring(0, 19).replace('T', ' ')}</td>
+            <td>${row.business_email}</td>
+            <td>${row.campaign}</td>
+            <td><div class="archive-text">${escapeHtml(row.message_text)}</div></td>
+            <td style="white-space:nowrap">${statusHtml}${actionHtml}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function approveSingle(id) {
+    const res = await fetch('/api/campaigns');
+    const campaigns = await res.json();
+    
+    const select = document.getElementById('approve-campaign-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Select an Outreach Campaign...</option>';
+    campaigns.forEach(c => {
+        select.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
+    });
+    
+    const modal = document.getElementById('approve-lead-modal');
+    if (modal) modal.style.display = 'flex';
+    
+    document.getElementById('confirm-approve-btn').onclick = async () => {
+        const campaignId = select.value;
+        if (!campaignId) {
+            alert("Please select a campaign");
+            return;
+        }
+        
+        await fetch('/api/approve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                id: id, 
+                reason: "Approved from Leads Dashboard", 
+                campaign_id: parseInt(campaignId)
+            })
+        });
+        
+        modal.style.display = 'none';
+        if (typeof refreshAll === 'function') refreshAll();
+        if (typeof loadCompanies === 'function') loadCompanies();
+    };
+}
+
+async function approveAll() {
+    const campaign = document.getElementById('campaign-select').value;
+    if (!campaign) {
+        alert("Please select a campaign first!");
+        return;
+    }
+    
+    const reason = prompt(`Approving all for '${campaign}'. Enter reason:`, "Identified via OSINT market research for LeadPilot Pro");
+    if (!reason) return;
+    
+    await fetch('/api/approve_all', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({campaign, reason})
+    });
+    
+    refreshAll();
+}
+
+function toggleSelectAllQueries() {
+    const isChecked = document.getElementById('selectAllQueries').checked;
+    document.querySelectorAll('.query-cb').forEach(cb => cb.checked = isChecked);
+}
+
+async function startResearch() {
+    const checkboxes = document.querySelectorAll('.query-cb:checked');
+    const selectedQueries = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedQueries.length === 0) {
+        alert("Please select at least one query to run.");
+        return;
+    }
+
+    if(!confirm(`Start background OSINT research for ${selectedQueries.length} selected queries? This may take several minutes.`)) return;
+    
+    const res = await fetch('/api/research', { 
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ queries: selectedQueries })
+    });
+    const data = await res.json();
+    alert(data.message);
+}
+
+let sendLogPollInterval = null;
+let researchLogPollInterval = null;
+
+async function pollSendLogs() {
+    try {
+        const res = await fetch('/api/send_logs?t=' + Date.now());
+        if (!res.ok) return;
+        const data = await res.json();
+        const terminal = document.getElementById('send-logs-terminal');
+        if (terminal) {
+            if (data.logs) {
+                terminal.textContent = data.logs;
+            } else {
+                terminal.textContent = "No send logs available yet. Start a campaign to generate logs.";
+            }
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    } catch (e) {
+        console.error("Error polling send logs:", e);
+    }
+}
+
+async function pollResearchLogs() {
+    try {
+        const res = await fetch('/api/research_logs?t=' + Date.now());
+        if (!res.ok) return;
+        const data = await res.json();
+        const terminal = document.getElementById('research-logs-terminal');
+        if (terminal) {
+            if (data.logs) {
+                terminal.textContent = data.logs;
+            } else {
+                terminal.textContent = "No research logs available yet. Start an OSINT query to generate logs.";
+            }
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            // Refresh query history to show newly executing queries
+            loadQueryHistory();
+        }
+    } catch (e) {
+        console.error("Error polling research logs:", e);
+    }
+}
+
+function downloadLogs(logType) {
+    window.open(`/api/download_log/${logType}`, '_blank');
+}
+
+async function sendCampaign() {
+    const campaign = document.getElementById('send-campaign').value;
+    const limit = parseInt(document.getElementById('send-limit').value);
+    const scheduleInput = document.getElementById('send-schedule').value;
+    
+    if (!campaign || isNaN(limit)) {
+        alert("Please fill in all fields.");
+        return;
+    }
+    
+    let scheduled_at = null;
+    let confirmMsg = `Are you sure you want to send up to ${limit} emails for campaign '${campaign}'?`;
+    
+    if (scheduleInput) {
+        // Convert local time to UTC string
+        const localDate = new Date(scheduleInput);
+        scheduled_at = localDate.toISOString();
+        confirmMsg = `Are you sure you want to schedule up to ${limit} emails for campaign '${campaign}' at ${localDate.toLocaleString()}?`;
+    }
+    
+    if(!confirm(confirmMsg)) return;
+    
+    const btn = document.getElementById('btn-send-campaign');
+    btn.disabled = true;
+    
+    if (scheduled_at) {
+        btn.textContent = "SCHEDULED ⏰";
+        document.getElementById('send-logs-terminal').textContent = `Campaign scheduled to start at: ${new Date(scheduleInput).toLocaleString()}\nLogs will appear here once it starts running.`;
+    } else {
+        btn.textContent = "SENDING IN BACKGROUND...";
+        if(sendLogPollInterval) clearInterval(sendLogPollInterval);
+        document.getElementById('send-logs-terminal').textContent = "Initializing campaign sending in background...\n";
+        sendLogPollInterval = setInterval(pollSendLogs, 2000);
+    }
+    
+    const payload = {campaign, limit};
+    if (scheduled_at) payload.scheduled_at = scheduled_at;
+    
+    const res = await fetch('/api/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    
+    if (!res.ok || !data.success) {
+        alert(data.detail || data.message || "Failed to start campaign.");
+        if(sendLogPollInterval) clearInterval(sendLogPollInterval);
+        document.getElementById('send-logs-terminal').textContent = "";
+        btn.disabled = false;
+        btn.textContent = "🚀 SEND CAMPAIGN";
+        return;
+    }
+    
+    setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = "🚀 SEND CAMPAIGN";
+    }, 5000);
+}
+
+
+function escapeHtml(unsafe) {
+    return String(unsafe ?? '')
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
+
+function refreshAll() {
+    loadStatus().catch(e => console.error("Error loading status:", e));
+    loadProspects().catch(e => console.error("Error loading prospects:", e));
+    loadApproved().catch(e => console.error("Error loading approved:", e));
+    loadRejected().catch(e => console.error("Error loading rejected:", e));
+    loadArchive().catch(e => console.error("Error loading archive:", e));
+    loadTemplates().catch(e => console.error("Error loading templates:", e));
+    loadCampaignsTab().catch(e => console.error("Error loading campaigns:", e));
+    loadQueries().catch(e => {
+        console.error("Error loading queries:", e);
+        const tbody = document.getElementById('queries-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#ef4444;">Connection error. Please restart the backend server.</td></tr>';
+    });
+    loadQueryHistory().catch(e => console.error("Error loading history:", e));
+    loadSettings().catch(e => console.error("Error loading settings:", e));
+    loadChart().catch(e => console.error("Error loading chart:", e));
+}
+
+let sentChartInstance = null;
+async function loadChart() {
+    const chartEl = document.getElementById('sentChart');
+    if (!chartEl) return;
+    const res = await fetch('/api/chart_data');
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    const ctx = chartEl.getContext('2d');
+    if (sentChartInstance) {
+        sentChartInstance.destroy();
+    }
+    
+    sentChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.dates,
+            datasets: [{
+                label: 'Emails Sent',
+                data: data.counts,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#e2e8f0' }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                y: {
+                    ticks: { color: '#94a3b8', stepSize: 1 },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+// Init
+switchTab('overview');
+refreshAll();
+setInterval(loadStatus, 5000); // Poll status
+
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.reload();
+}
+
+async function loadSettings() {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    document.getElementById('smtp-host').value = data.smtp_host || '';
+    document.getElementById('smtp-port').value = data.smtp_port || '';
+    document.getElementById('smtp-user').value = data.smtp_user || '';
+    document.getElementById('smtp-pass').value = data.smtp_password || '';
+    document.getElementById('smtp-from').value = data.smtp_from_email || '';
+    if(document.getElementById('imap-host')) document.getElementById('imap-host').value = data.imap_host || '';
+    if(document.getElementById('imap-port')) document.getElementById('imap-port').value = data.imap_port || '993';
+    document.getElementById('company-name').value = data.company_name || '';
+    document.getElementById('company-website').value = data.company_website || '';
+    document.getElementById('daily-limit').value = data.daily_limit || '250';
+    document.getElementById('delay-min').value = data.delay_minimum || '300';
+    document.getElementById('delay-max').value = data.delay_maximum || '900';
+    
+    document.getElementById('ai-api-key').value = data.ai_api_key || '';
+    document.getElementById('ai-base-url').value = data.ai_base_url || 'https://api.openai.com/v1';
+    document.getElementById('ai-model').value = data.ai_model || 'gpt-4o';
+    
+    if (document.getElementById('lusha-api-key')) {
+        document.getElementById('lusha-api-key').value = data.lusha_api_key || '';
+    }
+    if (document.getElementById('brave-api-key')) {
+        document.getElementById('brave-api-key').value = data.brave_api_key || '';
+    }
+    
+    // Enable AI generation UI if API key is set
+    const aiPromptInput = document.getElementById('ai-prompt-input');
+    const btnGenerateAi = document.getElementById('btn-generate-ai');
+    if (data.ai_api_key) {
+        aiPromptInput.disabled = false;
+        btnGenerateAi.disabled = false;
+        btnGenerateAi.style.cursor = 'pointer';
+        btnGenerateAi.style.opacity = '1';
+    } else {
+        aiPromptInput.disabled = true;
+        btnGenerateAi.disabled = true;
+        btnGenerateAi.style.cursor = 'not-allowed';
+        btnGenerateAi.style.opacity = '0.5';
+    }
+}
+
+async function testSmtp(e) {
+    e.preventDefault();
+    const email = document.getElementById('test-email').value;
+    const template = document.getElementById('test-template').value;
+    const logBox = document.getElementById('smtp-log');
+    const btn = document.getElementById('test-smtp-btn');
+    
+    btn.disabled = true;
+    btn.innerText = "Testing...";
+    logBox.innerText = `Sending test email to ${email} using template '${template}'...\n`;
+    
+    try {
+        const res = await fetch('/api/test_smtp', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email, template})
+        });
+        
+        const data = await res.json();
+        logBox.innerText += data.log;
+    } catch (err) {
+        logBox.innerText += `\nError: ${err}`;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Send Test Email";
+    }
+}
+
+async function saveSettings(e) {
+    e.preventDefault();
+    const payload = {
+        smtp_host: document.getElementById('smtp-host').value,
+        smtp_port: document.getElementById('smtp-port').value,
+        smtp_user: document.getElementById('smtp-user').value,
+        smtp_password: document.getElementById('smtp-pass').value,
+        smtp_from_email: document.getElementById('smtp-from').value,
+        company_name: document.getElementById('company-name').value,
+        company_website: document.getElementById('company-website').value,
+        daily_limit: document.getElementById('daily-limit').value,
+        delay_minimum: document.getElementById('delay-min').value,
+        delay_maximum: document.getElementById('delay-max').value,
+        ai_api_key: document.getElementById('ai-api-key').value,
+        ai_base_url: document.getElementById('ai-base-url').value,
+        ai_model: document.getElementById('ai-model').value,
+        lusha_api_key: document.getElementById('lusha-api-key') ? document.getElementById('lusha-api-key').value : "",
+        brave_api_key: document.getElementById('brave-api-key') ? document.getElementById('brave-api-key').value : "",
+        imap_host: document.getElementById('imap-host') ? document.getElementById('imap-host').value : "",
+        imap_port: document.getElementById('imap-port') ? document.getElementById('imap-port').value : "993"
+    };
+    
+    const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    
+    if (res.ok) alert("Settings saved successfully");
+    else alert("Failed to save settings");
+}
+
+async function searchLusha() {
+    const domain = document.getElementById('lusha-domain').value;
+    const role = document.getElementById('lusha-role').value;
+    const limit = document.getElementById('lusha-limit').value;
+    
+    if (!domain || !role) {
+        alert("Please provide both a Target Domain and a Job Title/Seniority.");
+        return;
+    }
+    
+    const btn = document.getElementById('lusha-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Searching...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/lusha/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                domain: domain,
+                role: role,
+                limit: parseInt(limit, 10) || 10
+            })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            alert(`Lusha Search Complete!\nAdded: ${data.added}\nSkipped (duplicates/no email): ${data.skipped}`);
+            refreshAll();
+        } else {
+            alert("Error: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Failed to connect to backend");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function fetchLushaCredits() {
+    const badge = document.getElementById('lusha-credits-badge');
+    if (!badge) return;
+    
+    badge.innerHTML = '💳 Lusha Credits: Fetching...';
+    try {
+        const res = await fetch('/api/lusha/credits');
+        const json = await res.json();
+        
+        if (json.status === 'success' && json.data) {
+            // Parse Lusha credits. E.g. usage for current period.
+            // Based on Lusha API structure for account/usage, it might have a complex structure.
+            // Let's just dump it safely or show 'Available' if we can't parse it deeply.
+            // Often there's a field like `credits` or `usage`.
+            let text = '💳 Lusha API Active';
+            badge.innerHTML = text;
+            badge.title = JSON.stringify(json.data, null, 2);
+        } else {
+            badge.innerHTML = '💳 Lusha Error: ' + (json.message || 'Unknown');
+        }
+    } catch (e) {
+        badge.innerHTML = '💳 Lusha Error';
+    }
+}
+
+async function prospectLusha() {
+    const country = document.getElementById('lusha-adv-country').value;
+    const state = document.getElementById('lusha-adv-state').value;
+    const industry = document.getElementById('lusha-adv-industry').value;
+    const role = document.getElementById('lusha-adv-role').value;
+    const limit = document.getElementById('lusha-adv-limit').value;
+    
+    if (!country && !state && !industry && !role) {
+        alert("Please provide at least one filter for the database prospect.");
+        return;
+    }
+    
+    const btn = document.getElementById('lusha-adv-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Prospecting...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/lusha/prospect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                country: country || null,
+                state: state || null,
+                industry: industry || null,
+                role: role || null,
+                limit: parseInt(limit, 10) || 10
+            })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            alert(`Lusha Prospecting Complete!\nAdded: ${data.added}\nSkipped (duplicates/no email): ${data.skipped}`);
+            refreshAll();
+        } else {
+            alert("Error: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Failed to connect to backend");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+
+async function changePassword(e) {
+    e.preventDefault();
+    const old_password = document.getElementById('old-pass').value;
+    const new_password = document.getElementById('new-pass').value;
+    
+    const res = await fetch('/api/change_password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({old_password, new_password})
+    });
+    
+    if (res.ok) {
+        alert("Password updated successfully");
+        document.getElementById('password-form').reset();
+    } else {
+        const data = await res.json();
+        alert(data.detail || "Failed to update password");
+    }
+}
+
+async function markReplied(prospectId) {
+    if(!confirm("Segnare questo lead come 'Replied'?")) return;
+    const res = await fetch('/api/prospects/mark_replied', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prospect_id: prospectId})
+    });
+    if(res.ok) {
+        loadArchive();
+    } else {
+        alert("Errore durante l'aggiornamento.");
+    }
+}
+
+async function markUnsubscribed(prospectId) {
+    if(!confirm("Segnare questo lead come 'Unsubscribed'?")) return;
+    const res = await fetch('/api/prospects/mark_unsubscribed', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prospect_id: prospectId})
+    });
+    if(res.ok) {
+        loadArchive();
+    } else {
+        alert("Errore durante l'aggiornamento.");
+    }
+}
+
+async function syncImap() {
+    const btn = document.getElementById('btn-sync-imap');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '🔄 Syncing...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/imap/sync', { method: 'POST' });
+        const data = await res.json();
+        if(data.success) {
+            alert(data.message);
+            loadArchive();
+        } else {
+            alert("Sync Fallito: " + (data.error || "Errore sconosciuto"));
+        }
+    } catch(err) {
+        alert("Errore di rete durante il sync.");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+function toggleAllArchive(source) {
+    const checkboxes = document.querySelectorAll('.archive-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
+    updateArchiveRequeueButton();
+}
+
+function updateArchiveRequeueButton() {
+    const anyChecked = document.querySelectorAll('.archive-checkbox:checked').length > 0;
+    const btn = document.getElementById('btn-requeue');
+    if (btn) btn.style.display = anyChecked ? 'inline-block' : 'none';
+}
+
+async function showRequeueModal() {
+    const res = await fetch('/api/campaigns');
+    const campaigns = await res.json();
+    const select = document.getElementById('requeue-campaign-select');
+    select.innerHTML = '<option value="">-- Select Campaign --</option>';
+    campaigns.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        select.appendChild(opt);
+    });
+    document.getElementById('requeue-modal').style.display = 'flex';
+}
+
+function closeRequeueModal() {
+    document.getElementById('requeue-modal').style.display = 'none';
+}
+
+async function executeRequeue(sendNow = false) {
+    const select = document.getElementById('requeue-campaign-select');
+    const campaignId = select.value;
+    
+    if (!campaignId) {
+        alert("Please select a campaign for the follow-up.");
+        return;
+    }
+    
+    const campaignName = select.options[select.selectedIndex].text;
+    
+    const checkboxes = document.querySelectorAll('.archive-checkbox:checked');
+    const prospectIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (prospectIds.length === 0) return;
+    
+    const res = await fetch('/api/prospects/requeue', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ prospect_ids: prospectIds, campaign_id: parseInt(campaignId) })
+    });
+    
+    if (res.ok) {
+        if (sendNow) {
+            // Trigger background send immediately
+            const sendRes = await fetch('/api/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ campaign: campaignName, limit: prospectIds.length })
+            });
+            const sendData = await sendRes.json();
+            if (sendRes.ok && sendData.success) {
+                alert("Leads queued and sending started immediately!");
+                closeRequeueModal();
+                switchTab('send'); // switch to send tab to see logs
+            } else {
+                alert("Queued successfully, but failed to start send: " + (sendData.error || sendData.detail || "Unknown error"));
+                closeRequeueModal();
+                loadArchive();
+            }
+        } else {
+            alert("Leads successfully queued for follow-up!");
+            closeRequeueModal();
+            loadArchive();
+        }
+    } else {
+        const data = await res.json();
+        alert("Error: " + (data.error || "Unknown error"));
+    }
+}
+
+function exportTableToCSV(tbodyId, filename) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    
+    // We will parse the table headers for the current tab
+    // To do this reliably, we can go up to the <table> and find the <thead>
+    const table = tbody.closest('table');
+    let csv = [];
+    
+    // Extract headers
+    const thead = table.querySelector('thead');
+    if (thead) {
+        const headers = Array.from(thead.querySelectorAll('th')).map(th => {
+            // Remove checkboxes if any
+            let clone = th.cloneNode(true);
+            const input = clone.querySelector('input');
+            if(input) input.remove();
+            return '"' + clone.textContent.replace(/"/g, '""').trim() + '"';
+        });
+        // Remove empty headers (e.g. checkbox column)
+        const cleanHeaders = headers.filter(h => h !== '""');
+        csv.push(cleanHeaders.join(','));
+    }
+    
+    // Extract rows
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach(tr => {
+        // Skip loading/empty rows
+        if (tr.querySelector('td[colspan]')) return;
+        
+        let rowData = [];
+        Array.from(tr.querySelectorAll('td')).forEach(td => {
+            // If there's a checkbox, skip it
+            if (td.querySelector('input[type="checkbox"]')) return;
+            
+            // For email content, we might want to get innerText to strip HTML
+            let text = td.innerText.replace(/"/g, '""').trim();
+            rowData.push('"' + text + '"');
+        });
+        csv.push(rowData.join(','));
+    });
+    
+    // Download
+    const csvFile = new Blob([csv.join('\\n')], { type: 'text/csv' });
+    const downloadLink = document.createElement("a");
+    downloadLink.download = filename;
+    downloadLink.href = window.URL.createObjectURL(csvFile);
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+}
+
+async function executeQuickSend() {
+    const campaign = document.getElementById('quick-send-campaign-select').value;
+    const rawData = document.getElementById('quick-send-data').value;
+    
+    if (!campaign) {
+        alert("Seleziona una campagna!");
+        return;
+    }
+    
+    if (!rawData.trim()) {
+        alert("Inserisci almeno un lead (email, azienda)!");
+        return;
+    }
+    
+    const lines = rawData.split('\n');
+    const leads = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Split by comma
+        const parts = line.split(',');
+        let email = parts[0].trim();
+        let company = parts.length > 1 ? parts.slice(1).join(',').trim() : "Unknown Company";
+        
+        if (email) {
+            leads.push({ email, company });
+        }
+    }
+    
+    if (leads.length === 0) {
+        alert("Nessun lead valido trovato. Formato atteso: email, azienda");
+        return;
+    }
+    
+    if (!confirm(`Vuoi importare ${leads.length} leads e avviare immediatamente l'invio per la campagna '${campaign}'?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('btn-quick-send-execute');
+    btn.disabled = true;
+    btn.textContent = "IMPORTING & SENDING...";
+    
+    try {
+        const res = await fetch('/api/quick_send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaign, leads, limit: leads.length })
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            alert(data.message);
+            document.getElementById('quick-send-data').value = ""; // Clear on success
+            // Redirect to send tab to view logs
+            switchTab('send');
+        } else {
+            alert(data.error || data.detail || "Si è verificato un errore.");
+        }
+    } catch (e) {
+        alert("Errore di rete o server.");
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "🚀 IMPORT & SEND NOW";
+    }
+}

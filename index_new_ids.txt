@@ -1,0 +1,84 @@
+        <div id="tab-overview">
+                    <div class="value" id="stat-campaigns">0</div>
+                    <div class="value" style="color: var(--primary)" id="stat-queries-gen">0</div>
+                    <div class="value" style="color: var(--accent)" id="stat-queries-exec">0</div>
+                    <div class="value" id="stat-leads">0</div>
+                    <div class="value" style="color: #f59e0b" id="stat-qualified">0</div>
+                    <div class="value" style="color: #10b981" id="stat-yield">0%</div>
+                <canvas id="sentChart" style="max-height: 100%;"></canvas>
+        <div id="tab-campaigns" class="hidden">
+                        <input type="text" id="new-offer-name" placeholder="Offer Name (e.g. NextJS MVP)" style="flex:1;">
+                        <input type="text" id="new-offer-desc" placeholder="Description..." style="flex:2;">
+                        <tbody id="offers-tbody"><tr><td colspan="2">Loading...</td></tr></tbody>
+                            <input type="text" id="new-icp-name" placeholder="ICP Name" style="flex:1;">
+                            <input type="text" id="new-icp-roles" placeholder="Roles (CTO, CEO)" style="flex:1;">
+                            <input type="text" id="new-icp-industries" placeholder="Industries" style="flex:1;">
+                            <input type="text" id="new-icp-locations" placeholder="Locations" style="flex:1;">
+                        <tbody id="icps-tbody"><tr><td colspan="2">Loading...</td></tr></tbody>
+                    <tbody id="campaigns-tbody">
+        <div id="tab-query_studio" class="hidden">
+                    <select id="qs-campaign-select" style="min-width:200px; padding:0.5rem; border-radius:4px;" onchange="loadQueryStudio()">
+                    <button class="btn-success" onclick="launchCampaignQueries()" id="btn-launch-campaign" disabled>🚀 Launch Campaign</button>
+                        <tbody id="qs-queries-tbody">
+        <div id="tab-leads" class="hidden">
+                        <tbody id="leads-tbody">
+        <div id="tab-companies" class="hidden">
+                        <tbody id="companies-tbody">
+        <div id="tab-analytics" class="hidden">
+        <div id="tab-providers" class="hidden">
+        <div id="tab-settings" class="hidden">
+                    <input type="password" id="setting-ai-key" placeholder="sk-..." style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="text" id="setting-ai-base-url" placeholder="https://api.openai.com/v1" style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="text" id="setting-ai-model" placeholder="gpt-4o" style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="password" id="setting-brave-key" placeholder="BSA..." style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="password" id="setting-lusha-key" placeholder="..." style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-smtp-host" placeholder="smtp.gmail.com" style="flex:3; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-smtp-port" placeholder="587" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-smtp-user" placeholder="user@domain.com" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="password" id="setting-smtp-password" placeholder="App Password" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="text" id="setting-smtp-from" placeholder="you@domain.com" style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="text" id="setting-company-name" placeholder="LeadPilot Inc." style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                    <input type="text" id="setting-company-website" placeholder="https://..." style="width:100%; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-daily-limit" placeholder="100" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-delay-min" placeholder="300" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                        <input type="text" id="setting-delay-max" placeholder="600" style="flex:1; padding:0.5rem; margin-top:0.5rem; border-radius:4px; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+        <div id="tab-logs" class="hidden">
+                <pre id="logs-content" style="white-space:pre-wrap; font-family:monospace; color:var(--text-muted); max-height:600px; overflow-y:auto;"></pre>
+        <div id="tab-legacy_queries" class="hidden">
+                    <tbody id="legacy-queries-tbody">
+    <div id="new-campaign-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+            <input type="text" id="new-campaign-name-input" placeholder="e.g. Q4 WebAuthn Push" style="width:100%; margin-bottom:1rem;">
+            <select id="new-campaign-offer" style="width:100%; margin-bottom:1rem; padding:0.5rem; border-radius:4px;"></select>
+            <select id="new-campaign-icp" style="width:100%; margin-bottom:1rem; padding:0.5rem; border-radius:4px;"></select>
+    <div id="company-detail-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+                <h2 style="margin-top:0;" id="modal-company-name">Company Name</h2>
+            <p style="color:var(--primary); margin-top:-0.5rem; margin-bottom:1.5rem;" id="modal-company-domain">domain.com</p>
+                <tbody id="modal-company-leads-tbody">
+        <div id="tab-outreach_campaigns" class="hidden">
+                <input type="text" id="new-campaign-name" placeholder="Campaign Name (e.g. lux-real-estate)" style="flex:1; padding:0.75rem; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text);">
+                <select id="new-campaign-template" style="flex:1; padding:0.75rem; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text);">
+                    <tbody id="outreach-campaigns-tbody">
+        <div id="tab-templates" class="hidden">
+                    <div id="template-list-sidebar" style="display:flex; flex-direction:column; gap:0.5rem;">
+                        <input type="text" id="active-template-name" placeholder="Template Name (e.g. pitch.txt)" style="font-size:1.1rem; font-weight:bold; width:300px; background:transparent; border:none; color:var(--text);" disabled>
+                        <input type="text" id="ai-prompt-input" placeholder="What should this email be about? (e.g. A cold pitch for SEO services...)" style="flex:1; padding:0.75rem; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:white; border-radius:4px;" disabled>
+                        <button id="btn-generate-ai" style="background:#10b981; color:white; border:none; padding:0.75rem 1.5rem; border-radius:4px; font-weight:bold; cursor:not-allowed; opacity:0.5;" onclick="generateWithAi()" disabled>✨ Generate with AI</button>
+                    <textarea id="active-template-content" style="flex:1; width:100%; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; color:white; padding:1rem; font-family:monospace; resize:none;" placeholder="Select a template or create a new one to start writing..."></textarea>
+        <div id="tab-send" class="hidden">
+                    <select id="send-campaign" style="width:100%; max-width:400px; padding:0.75rem; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text);">
+                    <input type="number" id="send-limit" value="20" min="1" max="50" style="width:100%; max-width:400px; padding:0.75rem; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white;">
+                    <button id="btn-send-campaign" style="background:#ef4444; padding:0.75rem 2rem; font-size:1rem; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="sendCampaign()">🚀 SEND CAMPAIGN</button>
+                <pre id="send-logs-terminal" style="background:var(--bg-color); color:#10b981; padding:1rem; border-radius:8px; font-family:monospace; min-height:200px; max-height:400px; overflow-y:auto; margin:0; border:1px solid #334155; white-space: pre-wrap; word-wrap: break-word;"></pre>
+        <div id="tab-archive" class="hidden">
+                    <table id="archive-table">
+                        <tbody id="archive-tbody">
+        <div id="approve-lead-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+                <select id="approve-campaign-select" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);"></select>
+                    <button id="confirm-approve-btn" style="background:var(--primary); padding:0.5rem 1rem; border-radius:4px; color:white; border:none; cursor:pointer;">Approve</button>
+        <div id="manual-lead-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+                <input type="email" id="manual-email" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                <input type="text" id="manual-company" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                <input type="text" id="manual-url" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+        <div id="csv-import-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+                <input type="file" id="csv-file" accept=".csv" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);">
+                <select id="csv-campaign-select" style="width:100%; padding:0.75rem; border-radius:4px; margin-bottom:1rem; background:var(--bg-input); color:var(--text); border:1px solid var(--border);"></select>

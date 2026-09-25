@@ -18,6 +18,18 @@ NEGATIVE_SITES = [
     "linkedin.com", "apollo.io", "lusha.com"
 ]
 
+def get_db_setting(key: str, default: str) -> str:
+    try:
+        import sqlite3
+        conn = sqlite3.connect("outreach_queue.sqlite3")
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            return row[0]
+    except Exception:
+        pass
+    return default
+
 class UnifiedSearchProvider(ABC):
     def __init__(self):
         self.enabled = True
@@ -36,7 +48,11 @@ class UnifiedSearchProvider(ABC):
 class DuckDuckGoProvider(UnifiedSearchProvider):
     def __init__(self):
         super().__init__()
-        self.enabled = os.getenv("DDG_ENABLED", "true").lower() == "true"
+        db_val = get_db_setting("ddg_enabled", "")
+        if db_val:
+            self.enabled = db_val.lower() == "true"
+        else:
+            self.enabled = os.getenv("DDG_ENABLED", "true").lower() == "true"
         
     def adapt_query(self, spec: QuerySpec) -> str:
         q = spec.text
@@ -194,8 +210,12 @@ class BingProvider(UnifiedSearchProvider):
 class SearXNGProvider(UnifiedSearchProvider):
     def __init__(self):
         super().__init__()
-        self.base_url = os.getenv("SEARXNG_URL", "http://localhost:8080").rstrip("/")
-        self.enabled = os.getenv("SEARXNG_ENABLED", "true").lower() == "true"
+        self.base_url = get_db_setting("searxng_url", os.getenv("SEARXNG_URL", "http://localhost:8080")).rstrip("/")
+        db_val = get_db_setting("searxng_enabled", "")
+        if db_val:
+            self.enabled = db_val.lower() == "true"
+        else:
+            self.enabled = os.getenv("SEARXNG_ENABLED", "true").lower() == "true"
         
     def adapt_query(self, spec: QuerySpec) -> str:
         q = spec.text
@@ -271,11 +291,15 @@ class SearXNGProvider(UnifiedSearchProvider):
 class BraveProvider(UnifiedSearchProvider):
     def __init__(self):
         super().__init__()
-        self.api_key = os.getenv("BRAVE_API_KEY", "")
-        self.enabled = os.getenv("BRAVE_ENABLED", "false").lower() == "true"
-        
+        self.api_key = get_db_setting("brave_api_key", os.getenv("BRAVE_API_KEY", ""))
+        db_val = get_db_setting("brave_enabled", "")
+        if db_val:
+            self.enabled = db_val.lower() == "true"
+        else:
+            self.enabled = os.getenv("BRAVE_ENABLED", "true" if self.api_key else "false").lower() == "true"
+            
         if self.enabled and not self.api_key:
-            logging.warning("BraveProvider is enabled but BRAVE_API_KEY is missing. Skipping provider.")
+            logging.warning("BraveProvider is enabled but brave_api_key is missing. Skipping provider.")
             self.enabled = False
             
     def adapt_query(self, spec: QuerySpec) -> str:
