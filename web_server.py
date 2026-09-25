@@ -1629,6 +1629,12 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
     product_id = payload.get("product_id")
     if not product_id:
          raise HTTPException(status_code=400, detail="Missing product_id")
+    try:
+        max_leads = int(payload.get("max_leads", 150))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="max_leads must be an integer")
+    if max_leads < 10 or max_leads > 5000:
+        raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
     db = OutreachDatabase(DB_PATH)
     q = "SELECT COUNT(*) FROM prospect_product_fit WHERE product_id = ? AND fit_status = 'FIT'"
     count = db.connection.execute(q, (product_id,)).fetchone()[0]
@@ -1704,7 +1710,11 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         
         venv_python = ROOT / ".venv" / "bin" / "python"
         py_bin = str(venv_python) if venv_python.exists() else "python3"
-        cmd = [py_bin, "-u", "public_osint_market_research.py", "--campaign-id", str(camp_id)]
+        cmd = [
+            py_bin, "-u", "public_osint_market_research.py",
+            "--campaign-id", str(camp_id),
+            "--max-leads", str(max_leads)
+        ]
         
         write_log("Running OSINT Discovery...")
         
@@ -1717,17 +1727,25 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
             process.stdout.close()
             returncode = process.wait()
         
-        write_log(f"OSINT Discovery completed with code {returncode}. Starting AI Evaluation...")
+        write_log(f"OSINT Discovery completed with code {returncode}.")
         
-        write_log("OSINT Discovery completed. Evaluation is performed inline.")
-        
-        # 3. Auto-Approve (Confidence >= 75)
         import sqlite3
         conn2 = sqlite3.connect(db_path_str)
-        conn2.execute("UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND fit_score >= 75", (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id))
-        conn2.commit()
         
-        # 4. Finish
+        if returncode != 0:
+            conn2.execute("UPDATE research_campaigns SET status = 'FAILED' WHERE id = ?", (camp_id,))
+            conn2.commit()
+            conn2.close()
+            write_log("Auto-Pilot stopped because OSINT discovery failed.")
+            return
+        
+        write_log("OSINT Discovery completed successfully. Product-fit evaluation was performed by the discovery engine.")
+        
+        # Auto-review only high-confidence product fits; final outreach approval remains manual.
+        conn2.execute(
+            "UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND fit_score >= 75",
+            (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id)
+        )
         conn2.execute("UPDATE research_campaigns SET status = 'COMPLETED' WHERE id = ?", (camp_id,))
         conn2.commit()
         conn2.close()
