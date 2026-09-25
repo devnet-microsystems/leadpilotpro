@@ -1602,8 +1602,14 @@ def orchestrator_pipeline_status(product_id: int, user: dict = Depends(get_curre
     q_qualified = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
     qualified = db.connection.execute(q_qualified, (product_id,)).fetchone()[0] or 0
     
-    q_rejected = "SELECT count(distinct p.id) FROM prospects p WHERE p.qualification_status = 'REJECTED' OR p.qualification_status = 'UNQUALIFIED'"
-    rejected = db.connection.execute(q_rejected).fetchone()[0] or 0
+    q_rejected = """
+        SELECT count(distinct p.id)
+        FROM prospects p
+        LEFT JOIN prospect_product_fit pf ON p.id = pf.prospect_id AND pf.product_id = ?
+        WHERE pf.fit_status IN ('REJECT', 'UNFIT', 'UNQUALIFIED')
+           OR (pf.id IS NULL AND p.qualification_status IN ('REJECTED', 'UNQUALIFIED'))
+    """
+    rejected = db.connection.execute(q_rejected, (product_id,)).fetchone()[0] or 0
     
     q_approved = "SELECT count(*) FROM product_campaigns WHERE product_id = ? AND status = 'APPROVED'"
     approved = db.connection.execute(q_approved, (product_id,)).fetchone()[0] or 0
@@ -1718,7 +1724,7 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         # 3. Auto-Approve (Confidence >= 75)
         import sqlite3
         conn2 = sqlite3.connect(db_path_str)
-        conn2.execute("UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND confidence_score >= 75", (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id))
+        conn2.execute("UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND fit_score >= 75", (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id))
         conn2.commit()
         
         # 4. Finish
