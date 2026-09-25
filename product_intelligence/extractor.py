@@ -133,6 +133,58 @@ def extract_from_text(raw_text: str, source_name: str = "paste") -> ProductSourc
     )
 
 
+def _extract_url_with_browser(url: str) -> tuple[str, str]:
+    """Fallback browser extraction for JS-heavy / bot-protected pages.
+
+    Every navigation request is checked before it is allowed to leave the
+    browser context. Private/loopback destinations are blocked to preserve the
+    same SSRF boundary used by the HTTP extractor.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        raise ValueError(f"Browser fallback unavailable: {e}") from e
+
+    def route_handler(route):
+        request_url = route.request.url
+        parsed = urlparse(request_url)
+        if parsed.scheme not in ("http", "https"):
+            route.abort()
+            return
+        hostname = parsed.hostname or ""
+        if not hostname or _is_private_ip(hostname):
+            route.abort()
+            return
+        route.continue_()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="LeadPilotPro/5.1 ProductIntelligence (+product-analysis)",
+            java_script_enabled=True,
+        )
+        page = context.new_page()
+        page.route("**/*", route_handler)
+        try:
+            response = page.goto(url, wait_until="domcontentloaded", timeout=URL_FETCH_TIMEOUT * 1000)
+            final_url = page.url
+            final_host = urlparse(final_url).hostname or ""
+            if not final_host or _is_private_ip(final_host):
+                raise ValueError("Browser navigation ended on a private/loopback address.")
+
+            try:
+                page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
+
+            html = page.content()
+            text = _normalise_text(_clean_html(html, source_url=final_url))
+            return text, final_url
+        finally:
+            context.close()
+            browser.close()
+
+
 def extract_from_url(url: str) -> ProductSourceContent:
     """Fetch a public URL and extract its main text content."""
     # ── Validation ──────────────────────────────────────────────────────────
@@ -152,6 +204,7 @@ def extract_from_url(url: str) -> ProductSourceContent:
     # ── Fetch ───────────────────────────────────────────────────────────────
     session = requests.Session()
     session.max_redirects = MAX_URL_REDIRECTS
+    browser_fallback_reason = None
     try:
         resp = session.get(
             url,
@@ -175,15 +228,26 @@ def extract_from_url(url: str) -> ProductSourceContent:
         encoding = resp.encoding or "utf-8"
         html = raw_bytes.decode(encoding, errors="replace")
     except requests.RequestException as e:
-        raise ValueError(f"Failed to fetch URL: {e}") from e
+        browser_fallback_reason = f"HTTP fetch failed: {e}"
+        html = None
+        resp = None
 
     # ── Extract ─────────────────────────────────────────────────────────────
-    text = _clean_html(html, source_url=url)
-    normalised = _normalise_text(text)
-    digest = _sha256(normalised)
+    if html is not None:
+        normalised = _normalise_text(_clean_html(html, source_url=url))
+        canonical_url = resp.url
+        # A tiny HTML shell is often a JS challenge / empty SPA. Give the
+        # browser fallback a chance before treating it as a valid source.
+        if len(normalised) < 120:
+            browser_fallback_reason = f"HTTP extraction returned too little text ({len(normalised)} chars)."
 
-    # Canonical URL = final URL after redirects
-    canonical_url = resp.url
+    if browser_fallback_reason:
+        logger.info("URL browser fallback for %s: %s", url, browser_fallback_reason)
+        normalised, canonical_url = _extract_url_with_browser(url)
+
+    digest = _sha256(normalised)
+    if len(normalised) < 20:
+        raise ValueError("Could not extract meaningful text from URL. Try the page URL directly or upload a PDF/text source.")
 
     return ProductSourceContent(
         source_type=SourceType.URL,
