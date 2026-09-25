@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -539,16 +539,25 @@ def create_icp(req: ICPRequest, user: dict = Depends(get_current_user)):
     return {"success": True}
 
 @app.get("/api/research_campaigns")
-def get_research_campaigns(user: dict = Depends(get_current_user)):
+def get_research_campaigns(product_id: int = None, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists(): return []
     db = OutreachDatabase(DB_PATH)
-    rows = db.connection.execute("""
-        SELECT rc.*, o.name as offer_name, i.name as icp_name 
+
+    # Optional product filter keeps the legacy endpoint backward-compatible
+    # while supporting the product-driven P5.x frontend.
+    query = """
+        SELECT rc.*, o.name as offer_name, i.name as icp_name
         FROM research_campaigns rc
         LEFT JOIN sales_offers o ON rc.offer_id = o.id
         LEFT JOIN ideal_customer_profiles i ON rc.icp_id = i.id
-        ORDER BY rc.created_at_utc DESC
-    """).fetchall()
+    """
+    params = ()
+    if product_id is not None:
+        query += " WHERE rc.product_id = ?"
+        params = (product_id,)
+    query += " ORDER BY rc.created_at_utc DESC"
+
+    rows = db.connection.execute(query, params).fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/research_campaigns")
@@ -1587,26 +1596,44 @@ async def scheduler_loop():
 def orchestrator_pipeline_status(product_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     
-    q_discovered = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_sources ps ON p.id = ps.prospect_id JOIN query_runs qr ON ps.query_run_id = qr.run_id JOIN campaign_queries cq ON qr.target_key = cq.target_key JOIN research_campaigns rc ON cq.campaign_id = rc.id WHERE rc.product_id = ?"
+    q_discovered = """
+        SELECT COUNT(DISTINCT p.id)
+        FROM prospects p
+        JOIN research_campaigns rc ON p.research_campaign_id = rc.id
+        WHERE rc.product_id = ?
+    """
     discovered = db.connection.execute(q_discovered, (product_id,)).fetchone()[0] or 0
     
     q_qualified = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
     qualified = db.connection.execute(q_qualified, (product_id,)).fetchone()[0] or 0
     
-    q_rejected = "SELECT count(distinct p.id) FROM prospects p WHERE p.qualification_status = 'REJECTED' OR p.qualification_status = 'UNQUALIFIED'"
-    rejected = db.connection.execute(q_rejected).fetchone()[0] or 0
+    q_rejected = """
+        SELECT count(distinct p.id)
+        FROM prospects p
+        LEFT JOIN prospect_product_fit pf ON p.id = pf.prospect_id AND pf.product_id = ?
+        WHERE pf.fit_status IN ('REJECT', 'UNFIT', 'UNQUALIFIED')
+           OR (pf.id IS NULL AND p.qualification_status IN ('REJECTED', 'UNQUALIFIED'))
+    """
+    rejected = db.connection.execute(q_rejected, (product_id,)).fetchone()[0] or 0
     
     q_approved = "SELECT count(*) FROM product_campaigns WHERE product_id = ? AND status = 'APPROVED'"
     approved = db.connection.execute(q_approved, (product_id,)).fetchone()[0] or 0
     
     exported = 0
     
+    campaign_row = db.connection.execute(
+        "SELECT id, status FROM research_campaigns WHERE product_id = ? ORDER BY id DESC LIMIT 1",
+        (product_id,)
+    ).fetchone()
+
     return {
         "discovered": discovered,
         "qualified": qualified,
         "rejected": rejected,
         "approved": approved,
-        "exported": exported
+        "exported": exported,
+        "campaign_id": campaign_row["id"] if campaign_row else None,
+        "campaign_status": campaign_row["status"] if campaign_row else None
     }
 
 @app.post("/api/orchestrator/evaluate_fit")
@@ -1614,6 +1641,12 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
     product_id = payload.get("product_id")
     if not product_id:
          raise HTTPException(status_code=400, detail="Missing product_id")
+    try:
+        max_leads = int(payload.get("max_leads", 150))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="max_leads must be an integer")
+    if max_leads < 10 or max_leads > 5000:
+        raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
     db = OutreachDatabase(DB_PATH)
     q = "SELECT COUNT(*) FROM prospect_product_fit WHERE product_id = ? AND fit_status = 'FIT'"
     count = db.connection.execute(q, (product_id,)).fetchone()[0]
@@ -1623,7 +1656,17 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
 @app.get("/api/orchestrator/evidence")
 def orchestrator_evidence(product_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
-    q = "SELECT p.id, p.company_name, p.target_url, pf.fit_status, pf.reason, pf.matched_signals, pf.evidence_reviewed_at FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
+    q = """
+        SELECT p.id, p.company_name, p.target_url,
+               pf.fit_status, pf.fit_score, pf.reason,
+               pf.matched_signals, pf.missing_signals,
+               pf.negative_signals, pf.evidence_source_ids,
+               pf.evidence_reviewed_at
+        FROM prospects p
+        JOIN prospect_product_fit pf ON p.id = pf.prospect_id
+        WHERE pf.product_id = ? AND pf.fit_status = 'FIT'
+        ORDER BY pf.fit_score DESC, p.id DESC
+    """
     rows = db.connection.execute(q, (product_id,)).fetchall()
     return [dict(r) for r in rows]
 
@@ -1654,7 +1697,7 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     product = conn.execute("SELECT status FROM products WHERE id = ?", (product_id,)).fetchone()
     if not product or product[0] != "READY":
         conn.close()
-        raise HTTPException(status_code=400, detail="Questo prodotto non è ancora stato analizzato dall'IA. Vai nella tab 'Sell a Product', seleziona il prodotto e clicca 'Analyze Product / Market' prima di avviare l'Auto-Pilot.")
+        raise HTTPException(status_code=400, detail="Questo prodotto non è ancora stato analizzato dall'IA. Vai in Research > Products, completa l'analisi e poi torna in Find Customers.")
 
     rc = conn.execute("SELECT id FROM research_campaigns WHERE product_id = ? ORDER BY id DESC LIMIT 1", (product_id,)).fetchone()
     if not rc:
@@ -1689,7 +1732,11 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         
         venv_python = ROOT / ".venv" / "bin" / "python"
         py_bin = str(venv_python) if venv_python.exists() else "python3"
-        cmd = [py_bin, "-u", "public_osint_market_research.py", "--campaign-id", str(camp_id)]
+        cmd = [
+            py_bin, "-u", "public_osint_market_research.py",
+            "--campaign-id", str(camp_id),
+            "--max-leads", str(max_leads)
+        ]
         
         write_log("Running OSINT Discovery...")
         
@@ -1702,17 +1749,22 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
             process.stdout.close()
             returncode = process.wait()
         
-        write_log(f"OSINT Discovery completed with code {returncode}. Starting AI Evaluation...")
+        write_log(f"OSINT Discovery completed with code {returncode}.")
         
-        write_log("OSINT Discovery completed. Evaluation is performed inline.")
-        
-        # 3. Auto-Approve (Confidence >= 75)
         import sqlite3
         conn2 = sqlite3.connect(db_path_str)
-        conn2.execute("UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND confidence_score >= 75", (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id))
-        conn2.commit()
         
-        # 4. Finish
+        if returncode != 0:
+            conn2.execute("UPDATE research_campaigns SET status = 'FAILED' WHERE id = ?", (camp_id,))
+            conn2.commit()
+            conn2.close()
+            write_log("Auto-Pilot stopped because OSINT discovery failed.")
+            return
+        
+        write_log("OSINT Discovery completed successfully. Product-fit evaluation was performed by the discovery engine.")
+        
+        # Evidence review remains a human gate. Auto-Pilot may discover and score fits,
+        # but it must never mark evidence as reviewed on behalf of the user.
         conn2.execute("UPDATE research_campaigns SET status = 'COMPLETED' WHERE id = ?", (camp_id,))
         conn2.commit()
         conn2.close()
@@ -1781,6 +1833,56 @@ def api_add_product_source(id: int, req: ProductSourceRequest, user: dict = Depe
         language=source_content.language
     )
     return {"success": True, "source_id": src["id"]}
+
+@app.post("/api/products/{id}/sources/pdf")
+async def api_add_product_pdf(id: int, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Upload one PDF source using the existing hardened PDF extractor."""
+    from product_intelligence.store import get_product, add_source, list_sources
+    from product_intelligence.extractor import extract_from_pdf, MAX_PDF_SOURCES
+
+    product = get_product(str(DB_PATH), id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    existing_pdf_count = sum(
+        1 for source in list_sources(str(DB_PATH), id)
+        if str(source.get("source_type", "")).upper() == "PDF"
+    )
+    if existing_pdf_count >= MAX_PDF_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF source limit reached ({MAX_PDF_SOURCES} per product)."
+        )
+
+    filename = Path(file.filename or "document.pdf").name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    raw = await file.read()
+    try:
+        source_content = extract_from_pdf(raw, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    src = add_source(
+        str(DB_PATH),
+        product_id=id,
+        source_type=source_content.source_type.value,
+        source_name=source_content.source_name,
+        source_url=source_content.source_url,
+        extracted_text=source_content.extracted_text,
+        content_hash=source_content.content_hash,
+        language=source_content.language
+    )
+    return {
+        "success": True,
+        "source_id": src["id"],
+        "filename": filename,
+        "pages": source_content.metadata.get("pages", 0),
+        "word_count": source_content.word_count,
+        "char_count": source_content.char_count
+    }
+
 
 @app.get("/api/products/{id}/sources")
 def api_get_product_sources(id: int, user: dict = Depends(get_current_user)):
@@ -2023,6 +2125,39 @@ def get_sales_strategy(product_id: int, research_campaign_id: int, market: str, 
         raise HTTPException(status_code=404, detail="Strategy not found")
     return strat
 
+@app.get("/api/product_campaign_lookup")
+def lookup_product_campaign(
+    product_id: int,
+    research_campaign_id: int,
+    market: str,
+    language: str,
+    target_segment: str,
+    buyer_role: str,
+    user: dict = Depends(get_current_user)
+):
+    """Return the existing product campaign for an exact sales context, if any."""
+    db = OutreachDatabase(DB_PATH)
+    row = db.connection.execute("""
+        SELECT id
+        FROM product_campaigns
+        WHERE product_id = ?
+          AND research_campaign_id = ?
+          AND market = ?
+          AND language = ?
+          AND target_segment = ?
+          AND buyer_role = ?
+        LIMIT 1
+    """, (
+        product_id,
+        research_campaign_id,
+        market,
+        language,
+        target_segment,
+        buyer_role
+    )).fetchone()
+    return {"campaign_id": row["id"] if row else None}
+
+
 @app.post("/api/product_campaigns/generate")
 def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
@@ -2120,6 +2255,89 @@ def approve_product_campaign(id: int, user: dict = Depends(get_current_user)):
     return {"success": True, "status": "APPROVED"}
 
 
+
+
+@app.post("/api/product_campaigns/{id}/export_to_outreach")
+def export_product_campaign_to_outreach(id: int, payload: dict = None, user: dict = Depends(get_current_user)):
+    """Export an approved product sequence into legacy Outreach campaigns/templates.
+
+    One legacy campaign is created per sequence step so the existing sender remains
+    fully compatible. Export never approves prospects and never sends email.
+    Existing campaigns/templates with the same names are preserved.
+    """
+    camp = get_product_campaign(str(DB_PATH), id)
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if camp.get("status") not in {"APPROVED", "ACTIVE"}:
+        raise HTTPException(status_code=400, detail="Only APPROVED or ACTIVE campaigns can be exported")
+
+    messages = camp.get("messages") or []
+    if len(messages) != camp.get("sequence_length"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sequence length mismatch. Expected {camp.get('sequence_length')}, got {len(messages)}"
+        )
+
+    db = OutreachDatabase(DB_PATH)
+    created = []
+    existing = []
+    warnings = [
+        "Each sequence step is exported as a separate legacy campaign/template.",
+        "Export does not send email and does not modify prospect approval status."
+    ]
+    add_footer = True if payload is None else bool(payload.get("add_footer", True))
+
+    for index, msg in enumerate(messages, start=1):
+        step_name = f"{camp['name']} — Step {index}"
+        template_name = f"{step_name}.txt"
+        subject = (msg.get("subject") or "").strip()
+        body = (msg.get("body") or "").strip()
+        if not subject or not body:
+            warnings.append(f"Step {index} skipped because subject or body is empty.")
+            continue
+
+        content = f"Subject: {subject}\n\n{body}"
+        if add_footer:
+            content += "\n\n---\nIf you prefer not to receive further messages, reply and let us know."
+
+        template_row = db.connection.execute(
+            "SELECT 1 FROM templates WHERE name = ? LIMIT 1",
+            (template_name,)
+        ).fetchone()
+        campaign_row = db.connection.execute(
+            "SELECT id FROM campaigns WHERE name = ? LIMIT 1",
+            (step_name,)
+        ).fetchone()
+
+        if template_row or campaign_row:
+            existing.append({
+                "campaign": step_name,
+                "template": template_name
+            })
+            continue
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.connection.execute(
+            "INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
+            (template_name, content, now)
+        )
+        db.connection.execute(
+            "INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, ?, ?)",
+            (step_name, template_name, now)
+        )
+        created.append({
+            "campaign": step_name,
+            "template": template_name
+        })
+
+    db.connection.commit()
+    return {
+        "success": True,
+        "created": created,
+        "existing": existing,
+        "warnings": warnings,
+        "sent": False
+    }
 
 
 @app.on_event("startup")

@@ -9,69 +9,58 @@
 </head>
 <body>
     <div id="toast-container"></div>
-    <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; border-bottom: 1px solid var(--border); margin-bottom: 0;">
-        <div style="padding-bottom: 1rem;">
-            <h1 style="margin: 0;">LeadPilot Pro</h1>
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 0;">Unified Local Market Intelligence</p>
+    <header class="app-header">
+        <div class="brand-block">
+            <h1>LeadPilot Pro</h1>
+            <p>Market intelligence → qualified leads → controlled outreach</p>
         </div>
-        
-        <div class="tabs" style="flex: 1; border-bottom: none; margin-bottom: 0; justify-content: center; padding-bottom: 0; overflow: visible; white-space: nowrap;">
-            <div class="tab active" onclick="switchTab('overview')">Dashboard</div>
-            <div class="tab" style="color: var(--accent); font-weight: bold;" onclick="switchTab('orchestrator')">Sell This Product</div>
+
+        <nav class="app-nav" aria-label="Primary navigation">
+            <div class="tab" onclick="switchTab('overview')">Dashboard</div>
+            <div class="tab primary-nav" onclick="switchTab('orchestrator')">Find Customers</div>
 
             <div class="dropdown">
                 <div class="tab">Research ▾</div>
                 <div class="dropdown-content">
-                    <div class="tab" onclick="switchTab('products')">Products / Product Intelligence</div>
+                    <div class="tab" onclick="switchTab('products')">Products</div>
                     <div class="tab" onclick="switchTab('research_campaigns')">Research Campaigns</div>
-                    <div class="tab" onclick="switchTab('query_studio')">Query Studio</div>
-                    <div class="tab" onclick="switchTab('leads')">Qualified Leads</div>
                     <div class="tab" onclick="switchTab('companies')">Companies</div>
-                    <div class="tab" onclick="switchTab('analytics')">Performance Analytics</div>
+                    <div class="tab" onclick="switchTab('leads')">Leads</div>
+                    <div class="tab" onclick="switchTab('query_studio')">Search Strategy <span class="nav-advanced">Advanced</span></div>
+                    <div class="tab" onclick="switchTab('analytics')">Performance</div>
+                    <div class="tab" onclick="switchTab('research')">Technical Logs <span class="nav-advanced">Advanced</span></div>
                 </div>
             </div>
 
             <div class="dropdown">
                 <div class="tab">Outreach ▾</div>
                 <div class="dropdown-content">
+                    <div class="tab" onclick="switchTab('pending')">Review Leads</div>
                     <div class="tab" onclick="switchTab('sales_campaigns')">Sales Campaigns</div>
-                    <div class="tab" onclick="switchTab('pending')">Pending Review</div>
                     <div class="tab" onclick="switchTab('campaigns')">Campaigns</div>
                     <div class="tab" onclick="switchTab('templates')">Templates</div>
                     <div class="tab" onclick="switchTab('send')">Sender Queue</div>
-                    <div class="tab" onclick="switchTab('quicksend')">Address Book</div>
-                    <div class="tab" onclick="switchTab('archive')">Email Archive</div>
+                    <div class="tab" onclick="switchTab('quicksend')">Contacts</div>
+                    <div class="tab" onclick="switchTab('archive')">Archive</div>
                 </div>
             </div>
 
             <div class="dropdown">
-                <div class="tab">System ▾</div>
+                <div class="tab">Settings ▾</div>
                 <div class="dropdown-content">
-                    <div class="tab" onclick="switchTab('providers')">Providers</div>
-                    <div class="tab" onclick="switchTab('settings')">Settings</div>
-                    <div class="tab" onclick="switchTab('research')">Legacy Queries &amp; Logs</div>
+                    <div class="tab" onclick="switchTab('settings')">SMTP / IMAP</div>
+                    <div class="tab" onclick="switchTab('providers')">AI / Search Providers</div>
                 </div>
             </div>
-        </div>
+        </nav>
 
-        <div style="padding-bottom: 1rem;">
-            <button onclick="logout()" style="background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Logout</button>
+        <div class="header-actions">
+            <button onclick="logout()" class="btn-logout">Logout</button>
         </div>
     </header>
 
     <div class="container">
-        <!-- Global System Logs Console -->
-        <div id="global-system-logs" class="glass-panel" style="margin-bottom: 2rem; border-left: 4px solid var(--accent);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; cursor: pointer;" onclick="document.getElementById('sys-logs-content').style.display = document.getElementById('sys-logs-content').style.display === 'none' ? 'block' : 'none';">
-                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                    <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981;"></span>
-                    Global System Terminal
-                </h3>
-                <span style="font-size: 0.8rem; color: var(--text-muted);">(Click to toggle)</span>
-            </div>
-            <pre id="sys-logs-content" style="background: #0a0a0a; color: #10b981; padding: 1rem; border-radius: 4px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; margin: 0; white-space: pre-wrap; display: block;">Connecting to system...</pre>
-        </div>
-
+        <!-- Technical logs remain available from Research > Technical Logs. -->
         <!-- Main Content -->
         <div class="glass-panel">
 
@@ -90,35 +79,15 @@
                     <h2>Dashboard Overview</h2>
                 </div>
 
-                <div class="glass-panel" style="margin-bottom: 2rem; padding: 1.5rem; border-left: 4px solid var(--primary);">
-                    <h3 style="margin-top: 0; margin-bottom: 1rem;">Quick Search</h3>
-                    <div style="display: flex; gap: 1rem;">
-                        <input type="text" id="quick-search-query" placeholder="e.g. CTO FinTech London" style="flex: 1; padding: 0.75rem; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text);">
-                        <button class="btn-success" onclick="runQuickSearch()" id="btn-quick-search" style="padding: 0.75rem 2rem;">🔍 Search Now</button>
+                <div class="hero-card" style="margin-bottom: 2rem;">
+                    <div>
+                        <span class="eyebrow">LeadPilot Pro</span>
+                        <h3>Find your next customers without navigating a cockpit.</h3>
+                        <p>Start from a product, let the system build the market context, discover companies, qualify evidence, and leave you the final approval.</p>
                     </div>
-                    <div id="quick-search-results" style="margin-top: 1rem; display: none;">
-                        <h4>Temporary Results</h4>
-                        <div style="overflow-x: auto; max-height: 300px;">
-                            <table style="width: 100%;">
-                                <thead>
-                                    <tr>
-                                        <th>Email</th>
-                                        <th>Domain</th>
-                                        <th>Confidence</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="quick-search-tbody">
-                                </tbody>
-                            </table>
-                        </div>
-                        <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: flex-end;">
-                            <button onclick="document.getElementById('quick-search-results').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text); padding: 0.5rem 1rem;">Dismiss</button>
-                            <button id="btn-save-campaign" onclick="saveQuickSearchToCampaign()" style="background:var(--primary); padding: 0.5rem 1rem;">Save as Research Campaign</button>
-                            <button id="btn-save-outreach" onclick="saveQuickSearchToOutreach()" style="background:var(--accent); padding: 0.5rem 1rem;">Send to Outreach</button>
-                        </div>
-                    </div>
+                    <button class="btn-success hero-cta" onclick="switchTab('orchestrator')">Find Customers →</button>
                 </div>
-                
+
                 <div class="stats-grid" style="margin-bottom: 2rem; grid-template-columns: repeat(4, 1fr);">
                     <div class="glass-panel stat-card">
                         <h3>Total Leads Found</h3>
@@ -161,6 +130,7 @@
                                 <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source Type</label>
                                 <select id="add-product-type" onchange="toggleProductSourceInput()" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: var(--text);">
                                     <option value="URL" style="background:#1a1a1a;">Website URL</option>
+                                    <option value="PDF" style="background:#1a1a1a;">PDF Document</option>
                                     <option value="TEXT" style="background:#1a1a1a;">Pasted Text</option>
                                 </select>
                             </div>
@@ -168,6 +138,11 @@
                                 <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source URL</label>
                                 <input type="text" id="add-product-url" placeholder="e.g. https://devnet-microsystems.com/audit/" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text);">
                             </div>
+                        </div>
+                        <div id="add-product-pdf-container" style="display:none; width: 100%;">
+                            <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">PDF Document</label>
+                            <input type="file" id="add-product-pdf" accept=".pdf,application/pdf" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color:var(--text);">
+                            <small style="display:block; margin-top:0.4rem; color:var(--text-muted);">PDF only, max 20 MB. You can add more PDFs to the same product later.</small>
                         </div>
                         <div id="add-product-text-container" style="display:none; width: 100%;">
                             <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source Text</label>
