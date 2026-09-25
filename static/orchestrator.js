@@ -1,6 +1,9 @@
 let currentOrchestratorProduct = null;
 let autoPilotLogInterval = null;
 let autoPilotStatusInterval = null;
+let manualSearchPollInterval = null;
+let manualSearchResults = [];
+let manualSearchCampaignId = null;
 
 function orchEl(id) {
     return document.getElementById(id);
@@ -440,6 +443,7 @@ async function runManualSearch() {
         return;
     }
     if (manualSearchPollInterval) clearInterval(manualSearchPollInterval);
+    manualSearchCampaignId = campaignEl && campaignEl.value ? Number(campaignEl.value) : null;
     btn.disabled = true;
     btn.textContent = 'Searching…';
     statusEl.textContent = 'Starting manual search…';
@@ -513,7 +517,7 @@ function renderManualSearchResults() {
             '<td><a href="' + orchEscape(lead.source_url || '#') + '" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">' + orchEscape(lead.source_url || '—') + '</a></td>' +
             '<td>' + Number(lead.relevance_score || 0) + '</td></tr>';
     }).join('');
-    const canSave = campaignEl && campaignEl.value;
+    const canSave = campaignEl && campaignEl.value && Number(campaignEl.value) === Number(manualSearchCampaignId || 0);
     resultsEl.innerHTML =
         '<div style="overflow:auto;border:1px solid var(--border);border-radius:8px;">' +
         '<table style="margin:0;min-width:850px;"><thead><tr><th>#</th><th>Lead</th><th>Provider</th><th>Source</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
