@@ -7,8 +7,12 @@ LeadPilot Pro is an enterprise-grade B2B lead generation and cold outreach CRM. 
 
 ## 🌟 Key Features
 
-### 1. Advanced OSINT Lead Generation
-Stop relying on outdated static databases. LeadPilot Pro integrates directly with live data sources to build highly targeted lead lists on the fly.
+### 1. Product-Driven Market Intelligence & OSINT Lead Generation
+Start from what you actually sell. LeadPilot Pro turns a product URL, text, or PDF into an evidence-backed customer profile, then discovers and qualifies matching companies from live public sources.
+
+- **Product Intelligence**: Extracts product facts, target markets, buyer roles, use cases, keywords, and explicit uncertainty from one or more sources.
+- **ICP + Market Discovery**: Builds an ICP and market-specific research campaign from the product profile.
+- **Evidence Gate**: Product-fit leads retain source evidence, fit score, matched signals, and human review status before outreach.
 - **Precision Targeting**: Filter by Country, State, Industry, and exact Job Title (e.g., *Marketing Director in Texas*).
 - **Target Account Search**: Extract key decision-makers from specific target domains.
 - **Automated Scraping**: Just type a query like *"Luxury Web Agencies Dubai"* and let the engine scrape live, verified business data.
@@ -40,10 +44,12 @@ Gain complete visibility over your outreach pipeline.
 
 ## 🔒 Security & Infrastructure
 
-LeadPilot Pro runs entirely on your own infrastructure.
-- **Data Sovereignty**: Your leads and email accounts are stored in a secure local SQLite database. No third-party SaaS has access to your hard-earned prospect data.
-- **Direct SMTP/IMAP**: Connects directly to your own mail servers, bypassing shared IPs that often suffer from poor deliverability.
-- **Audit Logs**: Every action (approvals, rejections, sends) is securely logged in an immutable audit trail.
+LeadPilot Pro can run locally with SQLite or in production with PostgreSQL / Google Cloud SQL. The application does not require a hosted lead database SaaS.
+
+- **Production persistence**: Cloud Run can connect to PostgreSQL through `LEADPILOT_DB_URL`; SQLite remains available for local development and deterministic tests.
+- **Human approval gates**: Discovery, qualification, Sales Campaign approval, and legacy outreach sending remain separate stages.
+- **Direct SMTP/IMAP**: Connects directly to your mail infrastructure rather than a shared sending network.
+- **Security controls**: Suppression lists, business-email validation, explicit send confirmation, session cookies, and audit events protect the outreach path.
 
 ---
 
