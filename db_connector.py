@@ -54,6 +54,13 @@ class PGWrapper:
 
     def executescript(self, sql_script):
         c = self.cursor()
+        sql_script = re.sub(r'(?i)COLLATE\s+NOCASE', '', sql_script)
+        # Strip FOREIGN KEY definitions because SQLite schema creates tables in wrong order for PG
+        sql_script = re.sub(r'(?i),\s*FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[a-zA-Z0-9_]+\s*\([^)]+\)', '', sql_script)
+        # Translate BYTES to BYTEA
+        sql_script = re.sub(r'(?i)\bBYTES\b', 'BYTEA', sql_script)
+        # Translate INTEGER PRIMARY KEY AUTOINCREMENT to SERIAL PRIMARY KEY
+        sql_script = re.sub(r'(?i)INTEGER\s+PRIMARY\s+KEY(?:\s+AUTOINCREMENT)?', 'SERIAL PRIMARY KEY', sql_script)
         # split by ; and execute, or just execute entirely since psycopg2 supports multiple statements
         c.cur.execute(sql_script)
         return c
@@ -110,6 +117,9 @@ class PGCursor:
         sql = "".join(result)
         
         # 2. SQLite specific dialect translations
+        # Translate AUTOINCREMENT to SERIAL
+        sql = re.sub(r'(?i)INTEGER\s+PRIMARY\s+KEY(?:\s+AUTOINCREMENT)?', 'SERIAL PRIMARY KEY', sql)
+
         # Replace INSERT OR IGNORE INTO with standard ON CONFLICT DO NOTHING
         # (This is a simplified approach. In a perfect world we parse the AST, but a regex works for LeadPilotPro's simple queries)
         sql_upper = sql.upper()
@@ -134,8 +144,31 @@ class PGCursor:
 
     def execute(self, sql, params=()):
         original_sql = sql
+        
+        # Intercept PRAGMA for Postgres
+        if sql.strip().upper().startswith("PRAGMA"):
+            match = re.search(r'(?i)PRAGMA\s+table_info\((.+?)\)', sql)
+            if match:
+                table_name = match.group(1).strip("'\"").lower()
+                # The schema_bootstrap uses row[1] to get column name. In PG, column_name is the 1st column (index 0). Wait, no, we can return row[1] as column_name if we select something else as first?
+                sql = f"SELECT 0 as cid, column_name AS name, data_type AS type, 0 as notnull, 0 as dflt_value, 0 as pk FROM information_schema.columns WHERE table_name = '{table_name}'"
+            else:
+                return self
+                
         sql = self._translate_sql(sql)
-        self.cur.execute(sql, params)
+        try:
+            self.cur.execute(sql, params)
+        except Exception as e:
+            import psycopg2
+            if isinstance(e, psycopg2.Error):
+                import sqlite3
+                if getattr(e, 'pgcode', None) == '42701': # Duplicate column
+                    raise sqlite3.OperationalError(str(e))
+                if getattr(e, 'pgcode', None) == '23505': # Unique violation
+                    raise sqlite3.IntegrityError(str(e))
+                # For others, also wrap in OperationalError
+                raise sqlite3.OperationalError(str(e))
+            raise
         if sql.strip().upper().endswith("RETURNING ID"):
             row = self.cur.fetchone()
             if row:
@@ -146,18 +179,27 @@ class PGCursor:
 
     def executemany(self, sql, seq_of_parameters):
         sql = self._translate_sql(sql)
-        self.cur.executemany(sql, seq_of_parameters)
+        try:
+            self.cur.executemany(sql, seq_of_parameters)
+        except Exception as e:
+            import psycopg2
+            if isinstance(e, psycopg2.Error):
+                import sqlite3
+                if getattr(e, 'pgcode', None) == '23505': # Unique violation
+                    raise sqlite3.IntegrityError(str(e))
+                raise sqlite3.OperationalError(str(e))
+            raise
         return self
 
     def fetchone(self):
         row = self.cur.fetchone()
         if row:
-            return dict(row) # convert to dict so it acts like sqlite3.Row
+            return row # DictRow supports both string and integer indexing
         return None
         
     def fetchall(self):
         rows = self.cur.fetchall()
-        return [dict(r) for r in rows]
+        return rows
         
     def close(self):
         self.cur.close()

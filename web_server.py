@@ -17,6 +17,7 @@ import db_connector
 import subprocess
 import csv
 import json
+import logging
 import io
 import hashlib
 import secrets
