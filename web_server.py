@@ -36,6 +36,10 @@ STATIC_DIR.mkdir(exist_ok=True)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+def database_available() -> bool:
+    """Return whether LeadPilot has a configured local or external database."""
+    return bool(os.environ.get("LEADPILOT_DB_URL", "").strip()) or DB_PATH.exists()
+
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -58,7 +62,7 @@ def read_root(request: Request):
         return FileResponse(STATIC_DIR / "index.html")
 
     token = request.cookies.get("session_token")
-    if token and DB_PATH.exists():
+    if token and database_available():
         db = OutreachDatabase(DB_PATH)
         user = db.connection.execute(
             "SELECT 1 FROM sessions WHERE token = ? AND expires_at_utc > ?",
@@ -73,7 +77,7 @@ def get_current_user(request: Request):
         return {"id": 1, "username": "admin"}
 
     token = request.cookies.get("session_token")
-    if not token or not DB_PATH.exists():
+    if not token or not database_available():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     db = OutreachDatabase(DB_PATH)
     user = db.connection.execute(
@@ -93,7 +97,7 @@ def login(req: LoginRequest, response: Response):
     if auth_disabled():
         return {"success": True}
 
-    if not DB_PATH.exists():
+    if not database_available():
         db = OutreachDatabase(DB_PATH) # Will auto-create admin if empty
     else:
         db = OutreachDatabase(DB_PATH)
@@ -133,7 +137,7 @@ def login(req: LoginRequest, response: Response):
 @app.post("/api/logout")
 def logout(request: Request, response: Response):
     token = request.cookies.get("session_token")
-    if token and DB_PATH.exists():
+    if token and database_available():
         db = OutreachDatabase(DB_PATH)
         db.connection.execute("DELETE FROM sessions WHERE token = ?", (token,))
         db.connection.commit()
@@ -142,7 +146,7 @@ def logout(request: Request, response: Response):
 
 @app.get("/api/status")
 def get_status(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"pending": 0, "approved": 0, "sent": 0, "total": 0, "suppressed": 0, "campaigns": []}
     
     db = OutreachDatabase(DB_PATH)
@@ -171,7 +175,7 @@ def get_status(user: dict = Depends(get_current_user)):
 
 @app.get("/api/dashboard_stats")
 def get_dashboard_stats(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"total_campaigns": 0, "queries_generated": 0, "queries_executed": 0, "leads_found": 0, "qualified_leads": 0, "qualified_yield": "0.0%"}
         
     db = OutreachDatabase(DB_PATH)
@@ -198,7 +202,7 @@ def get_dashboard_stats(user: dict = Depends(get_current_user)):
 
 @app.get("/api/chart_data")
 def get_chart_data(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"dates": [], "counts": []}
         
     db = OutreachDatabase(DB_PATH)
@@ -217,7 +221,7 @@ def get_chart_data(user: dict = Depends(get_current_user)):
 
 @app.get("/api/companies")
 def get_companies(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"companies": []}
     db = OutreachDatabase(DB_PATH)
     db.connection.row_factory = sqlite3.Row
@@ -238,7 +242,7 @@ def get_companies(user: dict = Depends(get_current_user)):
 
 @app.get("/api/companies/{company_name}/leads")
 def get_company_leads(company_name: str, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"leads": []}
     db = OutreachDatabase(DB_PATH)
     db.connection.row_factory = sqlite3.Row
@@ -253,7 +257,7 @@ def get_company_leads(company_name: str, user: dict = Depends(get_current_user))
 
 @app.get("/api/analytics")
 def get_analytics(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists(): return {}
+    if not database_available(): return {}
     db = OutreachDatabase(DB_PATH)
     
     # Lead relevance distribution
@@ -277,14 +281,14 @@ def get_analytics(user: dict = Depends(get_current_user)):
 
 @app.get("/api/prospects")
 def get_prospects(status: str = "pending_review", date_from: str = None, date_to: str = None, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     db = OutreachDatabase(DB_PATH)
     return [dict(r) for r in db.list_prospects(status, date_from, date_to)]
 
 @app.get("/api/contacts")
 def get_unique_contacts(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute('''
@@ -306,7 +310,7 @@ class UpdateCompanyRequest(BaseModel):
 
 @app.post("/api/contacts/update_company")
 def update_contact_company(req: UpdateCompanyRequest, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"success": False, "error": "DB not found"}
     db = OutreachDatabase(DB_PATH)
     try:
@@ -325,7 +329,7 @@ class DeleteContactsRequest(BaseModel):
 
 @app.post("/api/contacts/blacklist")
 def blacklist_contacts(req: DeleteContactsRequest, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return {"success": False, "error": "DB not found"}
     db = OutreachDatabase(DB_PATH)
     try:
@@ -463,7 +467,7 @@ def update_campaign(req: UpdateCampaignRequest, user: dict = Depends(get_current
 
 @app.get("/api/archive")
 def get_archive(date_from: str = None, date_to: str = None, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -498,7 +502,7 @@ class CampaignRequest(BaseModel):
 
 @app.get("/api/campaigns")
 def get_campaigns(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     db = OutreachDatabase(DB_PATH)
     try:
@@ -547,7 +551,7 @@ class ResearchCampaignRequest(BaseModel):
 
 @app.get("/api/sales_offers")
 def get_sales_offers(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists(): return []
+    if not database_available(): return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("SELECT * FROM sales_offers ORDER BY id DESC").fetchall()
     return [dict(r) for r in rows]
@@ -564,7 +568,7 @@ def create_sales_offer(req: OfferRequest, user: dict = Depends(get_current_user)
 
 @app.get("/api/icps")
 def get_icps(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists(): return []
+    if not database_available(): return []
     db = OutreachDatabase(DB_PATH)
     rows = db.connection.execute("SELECT * FROM ideal_customer_profiles ORDER BY id DESC").fetchall()
     return [dict(r) for r in rows]
@@ -581,7 +585,7 @@ def create_icp(req: ICPRequest, user: dict = Depends(get_current_user)):
 
 @app.get("/api/research_campaigns")
 def get_research_campaigns(product_id: int = None, user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists(): return []
+    if not database_available(): return []
     db = OutreachDatabase(DB_PATH)
 
     # Optional product filter keeps the legacy endpoint backward-compatible
@@ -636,7 +640,7 @@ def launch_research_campaign(id: int, background_tasks: BackgroundTasks, user: d
 
 @app.get("/api/templates")
 def get_templates(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     db = OutreachDatabase(DB_PATH)
     try:
@@ -681,7 +685,7 @@ def delete_template(name: str, user: dict = Depends(get_current_user)):
 
 @app.get("/api/queries")
 def get_queries(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     db = OutreachDatabase(DB_PATH)
     try:
@@ -984,7 +988,7 @@ def api_quick_search_save(req: QuickSearchSaveRequest, user: dict = Depends(get_
 
 @app.get("/api/query_history")
 def get_query_history(user: dict = Depends(get_current_user)):
-    if not DB_PATH.exists():
+    if not database_available():
         return []
     conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -1796,7 +1800,7 @@ import asyncio
 async def scheduler_loop():
     while True:
         try:
-            if DB_PATH.exists():
+            if database_available():
                 db = OutreachDatabase(DB_PATH)
                 now_iso = datetime.now(timezone.utc).isoformat()
                 
