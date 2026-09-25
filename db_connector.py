@@ -2,6 +2,23 @@ import os
 import sqlite3
 import re
 
+class PGRow:
+    def __init__(self, row):
+        self._row = row
+        
+    def __getitem__(self, key):
+        val = self._row[key]
+        if isinstance(val, memoryview):
+            return bytes(val)
+        return val
+        
+    def keys(self):
+        return self._row.keys()
+        
+    def __iter__(self):
+        for k in self.keys():
+            yield k
+
 def get_connection(db_path=None, **kwargs):
     """
     Ritorna una connessione PostgreSQL se LEADPILOT_DB_URL è configurato (e inizia per postgres),
@@ -192,15 +209,16 @@ class PGCursor:
             raise
         return self
 
+
     def fetchone(self):
         row = self.cur.fetchone()
         if row:
-            return row # DictRow supports both string and integer indexing
+            return PGRow(row)
         return None
         
     def fetchall(self):
         rows = self.cur.fetchall()
-        return rows
+        return [PGRow(r) for r in rows]
         
     def close(self):
         self.cur.close()
