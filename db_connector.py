@@ -97,7 +97,7 @@ class PGCursor:
     def description(self):
         return self.cur.description
 
-    def _translate_sql(self, sql):
+    def _translate_sql(self, sql, add_returning=True):
         # 1. Translate ? to %s OUTSIDE of string literals
         result = []
         in_string = False
@@ -132,7 +132,7 @@ class PGCursor:
                 
         # Handle RETURNING id for auto-increment emulation
         is_insert = sql.strip().upper().startswith("INSERT INTO")
-        if is_insert and "RETURNING " not in sql.upper():
+        if add_returning and is_insert and "RETURNING " not in sql.upper():
             # Check table name to avoid returning id on tables that don't have it
             match = re.search(r'(?i)INSERT\s+INTO\s+([a-zA-Z0-9_]+)', sql)
             if match:
@@ -178,7 +178,7 @@ class PGCursor:
         return self
 
     def executemany(self, sql, seq_of_parameters):
-        sql = self._translate_sql(sql)
+        sql = self._translate_sql(sql, add_returning=False)
         try:
             self.cur.executemany(sql, seq_of_parameters)
         except Exception as e:
