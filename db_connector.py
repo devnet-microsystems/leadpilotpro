@@ -106,6 +106,7 @@ class PGCursor:
     def __init__(self, cur):
         self.cur = cur
         self.lastrowid = None
+        self._pending_returning_row = None
         
     @property
     def rowcount(self):
@@ -189,10 +190,8 @@ class PGCursor:
             raise
         if sql.strip().upper().endswith("RETURNING ID"):
             row = self.cur.fetchone()
-            if row:
-                self.lastrowid = row[0]
-            else:
-                self.lastrowid = None
+            self._pending_returning_row = row
+            self.lastrowid = row[0] if row else None
         return self
 
     def executemany(self, sql, seq_of_parameters):
