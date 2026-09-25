@@ -219,6 +219,7 @@ class OutreachDatabase:
         for column, sql_type in (
             ("evidence_reviewed_at", "TEXT"),
             ("evidence_reviewed_by", "TEXT"),
+            ("analysis_version", "TEXT"),
         ):
             try:
                 self.connection.execute(

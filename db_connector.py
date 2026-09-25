@@ -57,6 +57,7 @@ class PGWrapper:
         sql_script = re.sub(r'(?i)COLLATE\s+NOCASE', '', sql_script)
         # Strip FOREIGN KEY definitions because SQLite schema creates tables in wrong order for PG
         sql_script = re.sub(r'(?i),\s*FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[a-zA-Z0-9_]+\s*\([^)]+\)', '', sql_script)
+        sql_script = re.sub(r'(?i)\s+REFERENCES\s+[a-zA-Z0-9_]+\s*\([^)]+\)', '', sql_script)
         # Translate BYTES to BYTEA
         sql_script = re.sub(r'(?i)\bBYTES\b', 'BYTEA', sql_script)
         # Translate INTEGER PRIMARY KEY AUTOINCREMENT to SERIAL PRIMARY KEY
