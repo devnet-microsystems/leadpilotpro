@@ -472,6 +472,7 @@ def parse_args():
     
     # Quick Search Mode
     parser.add_argument("--quick-search", action="store_true", help="Run without saving to DB and output JSON")
+    parser.add_argument("--provider", default="", help="Restrict execution to one enabled search provider (e.g. BraveProvider)")
     
     return parser.parse_args()
 
@@ -506,8 +507,22 @@ def main():
         "SearXNGProvider": SearXNGProvider(),
         "BraveProvider": BraveProvider()
     }
-    
-    active_providers = [p for p in providers.values() if p.enabled]
+
+    # By default use providers explicitly enabled in Settings. A manual search
+    # may pin execution to one enabled provider.
+    selected_provider = (args.provider or "").strip()
+    if selected_provider:
+        provider = providers.get(selected_provider)
+        if not provider:
+            logging.error(f"Unknown provider: {selected_provider}")
+            return 2
+        if not provider.enabled:
+            logging.error(f"Provider is disabled in Settings: {selected_provider}")
+            return 2
+        active_providers = [provider]
+    else:
+        active_providers = [p for p in providers.values() if p.enabled]
+
     active_provider_names = [p.name for p in active_providers]
     logging.info(f"Active providers: {active_provider_names}")
 

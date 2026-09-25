@@ -33,6 +33,7 @@ function orchNotify(message, type = 'info') {
 }
 
 async function initOrchestratorTab() {
+    initManualSearchControls();
     if (autoPilotLogInterval) {
         clearInterval(autoPilotLogInterval);
         autoPilotLogInterval = null;
@@ -394,3 +395,154 @@ async function reviewEvidence(prospectId, action) {
         orchNotify(e.message || 'Could not update evidence', 'error');
     }
 }
+
+
+async function initManualSearchControls() {
+    const providerEl = orchEl('fc-manual-provider');
+    const campaignEl = orchEl('fc-manual-campaign');
+    if (!providerEl || !campaignEl) return;
+
+    try {
+        const [providersRes, campaignsRes] = await Promise.all([
+            fetch('/api/search_providers'),
+            fetch('/api/research_campaigns')
+        ]);
+        const providers = providersRes.ok ? await providersRes.json() : [];
+        const campaigns = campaignsRes.ok ? await campaignsRes.json() : [];
+        const enabled = providers.filter(p => p.enabled);
+        providerEl.innerHTML = '<option value="">Auto — enabled providers</option>' +
+            enabled.map(p => '<option value="' + orchEscape(p.id) + '">' + orchEscape(p.name) + '</option>').join('');
+        campaignEl.innerHTML = '<option value="">Preview only — choose a campaign to save</option>' +
+            campaigns.map(c => '<option value="' + Number(c.id) + '">' + orchEscape(c.name) + '</option>').join('');
+        if (!enabled.length) {
+            providerEl.innerHTML = '<option value="">No enabled search providers</option>';
+            orchEl('fc-manual-search-btn').disabled = true;
+        }
+    } catch (e) {
+        console.error(e);
+        orchNotify('Could not load manual search settings.', 'error');
+    }
+}
+
+async function runManualSearch() {
+    const queryEl = orchEl('fc-manual-query');
+    const providerEl = orchEl('fc-manual-provider');
+    const campaignEl = orchEl('fc-manual-campaign');
+    const btn = orchEl('fc-manual-search-btn');
+    const statusEl = orchEl('fc-manual-search-status');
+    const resultsEl = orchEl('fc-manual-search-results');
+    if (!queryEl || !btn || !statusEl || !resultsEl) return;
+
+    const query = queryEl.value.trim();
+    if (!query) {
+        orchNotify('Enter a search query first.', 'info');
+        queryEl.focus();
+        return;
+    }
+    if (manualSearchPollInterval) clearInterval(manualSearchPollInterval);
+    btn.disabled = true;
+    btn.textContent = 'Searching…';
+    statusEl.textContent = 'Starting manual search…';
+    resultsEl.innerHTML = '';
+
+    try {
+        const res = await fetch('/api/quick_search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                query: query,
+                provider: providerEl ? (providerEl.value || null) : null,
+                campaign_id: campaignEl && campaignEl.value ? Number(campaignEl.value) : null,
+                max_leads: 25
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Manual search could not be started.');
+        manualSearchPollInterval = setInterval(function() { pollManualSearch(data.job_id); }, 2000);
+        await pollManualSearch(data.job_id);
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Search Now';
+        statusEl.textContent = 'Search failed.';
+        resultsEl.innerHTML = '<div class="fc-panel" style="color:#fca5a5;">' + orchEscape(e.message || 'Manual search failed.') + '</div>';
+    }
+}
+
+async function pollManualSearch(jobId) {
+    const btn = orchEl('fc-manual-search-btn');
+    const statusEl = orchEl('fc-manual-search-status');
+    const resultsEl = orchEl('fc-manual-search-results');
+    try {
+        const res = await fetch('/api/quick_search/' + encodeURIComponent(jobId));
+        const job = await res.json();
+        if (!res.ok) throw new Error(job.detail || 'Search job unavailable.');
+        if (job.status === 'QUEUED' || job.status === 'RUNNING') {
+            statusEl.textContent = job.status === 'QUEUED' ? 'Queued…' : 'Searching and checking public pages…';
+            return;
+        }
+        clearInterval(manualSearchPollInterval);
+        manualSearchPollInterval = null;
+        btn.disabled = false;
+        btn.textContent = 'Search Now';
+        if (job.status === 'FAILED') throw new Error(job.error || 'Manual search failed.');
+        manualSearchResults = Array.isArray(job.leads) ? job.leads : [];
+        statusEl.textContent = manualSearchResults.length ? manualSearchResults.length + ' result(s) found.' : 'Search completed with no qualifying email results.';
+        renderManualSearchResults();
+    } catch (e) {
+        clearInterval(manualSearchPollInterval);
+        manualSearchPollInterval = null;
+        btn.disabled = false;
+        btn.textContent = 'Search Now';
+        statusEl.textContent = 'Search failed.';
+        resultsEl.innerHTML = '<div class="fc-panel" style="color:#fca5a5;">' + orchEscape(e.message || 'Manual search failed.') + '</div>';
+    }
+}
+
+function renderManualSearchResults() {
+    const resultsEl = orchEl('fc-manual-search-results');
+    const campaignEl = orchEl('fc-manual-campaign');
+    if (!resultsEl) return;
+    if (!manualSearchResults.length) {
+        resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-muted);">No results to save.</div>';
+        return;
+    }
+    const rows = manualSearchResults.slice(0, 50).map(function(lead, i) {
+        return '<tr><td>' + (i + 1) + '</td>' +
+            '<td><strong>' + orchEscape(lead.email) + '</strong><br><span style="color:var(--text-muted);font-size:.78rem;">' + orchEscape(lead.company_name || lead.domain || '') + '</span></td>' +
+            '<td>' + orchEscape(lead.engine || '') + '</td>' +
+            '<td><a href="' + orchEscape(lead.source_url || '#') + '" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">' + orchEscape(lead.source_url || '—') + '</a></td>' +
+            '<td>' + Number(lead.relevance_score || 0) + '</td></tr>';
+    }).join('');
+    const canSave = campaignEl && campaignEl.value;
+    resultsEl.innerHTML =
+        '<div style="overflow:auto;border:1px solid var(--border);border-radius:8px;">' +
+        '<table style="margin:0;min-width:850px;"><thead><tr><th>#</th><th>Lead</th><th>Provider</th><th>Source</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div style="display:flex;gap:.75rem;justify-content:flex-end;align-items:center;margin-top:.75rem;">' +
+        (canSave ? '<button class="btn-success" onclick="saveManualSearchResults()">Save to Review Leads</button>' : '<span style="color:var(--text-muted);font-size:.85rem;">Preview only. Select a Research Campaign above to save and qualify these results.</span>') +
+        '</div>';
+}
+
+async function saveManualSearchResults() {
+    const campaignId = Number(orchEl('fc-manual-campaign') && orchEl('fc-manual-campaign').value || 0);
+    if (!campaignId || !manualSearchResults.length) {
+        orchNotify('Select a Research Campaign before saving the results.', 'info');
+        return;
+    }
+    try {
+        const res = await fetch('/api/quick_search/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({leads: manualSearchResults, campaign_id: campaignId})
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.detail || data.error || 'Could not save search results.');
+        orchNotify(data.inserted + ' lead(s) submitted to Review Leads. The qualification gate remains active.', 'success');
+        switchTab('pending');
+    } catch (e) {
+        orchNotify(e.message || 'Could not save search results.', 'error');
+    }
+}
+
+window.runManualSearch = runManualSearch;
+window.saveManualSearchResults = saveManualSearchResults;
+window.initManualSearchControls = initManualSearchControls;

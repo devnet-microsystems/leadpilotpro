@@ -797,6 +797,188 @@ def edit_query(req: dict, user: dict = Depends(get_current_user)):
     except sqlite3.IntegrityError:
         return {"success": False, "message": "New query already exists"}
 
+# --- Manual Search / Quick Search -------------------------------------------------
+MANUAL_SEARCH_JOB_DIR = DB_PATH.parent / "manual_search_jobs"
+MANUAL_SEARCH_JOB_DIR.mkdir(parents=True, exist_ok=True)
+
+class QuickSearchRequest(BaseModel):
+    query: str
+    campaign_id: int | None = None
+    provider: str | None = None
+    max_leads: int = 25
+
+class QuickSearchSaveRequest(BaseModel):
+    leads: list[dict]
+    campaign_id: int
+
+
+def _manual_search_job_path(job_id: str) -> Path:
+    return MANUAL_SEARCH_JOB_DIR / f"{job_id}.json"
+
+
+def _write_manual_search_job(job_id: str, payload: dict) -> None:
+    path = _manual_search_job_path(job_id)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _run_manual_search_job(job_id: str, query: str, campaign_id: int | None, provider_name: str | None, max_leads: int) -> None:
+    _write_manual_search_job(job_id, {
+        "job_id": job_id, "status": "RUNNING", "query": query,
+        "campaign_id": campaign_id, "provider": provider_name,
+        "count": 0, "leads": []
+    })
+    try:
+        base_dir = ROOT
+        venv_python = base_dir / ".venv" / "bin" / "python"
+        python_bin = str(venv_python if venv_python.exists() else Path(os.sys.executable))
+        cmd = [
+            python_bin, str(base_dir / "public_osint_market_research.py"),
+            "--database", str(DB_PATH), "--queries", query,
+            "--max-queries", "1", "--max-leads", str(max_leads), "--quick-search"
+        ]
+        if campaign_id is not None:
+            cmd.extend(["--campaign-id", str(campaign_id)])
+        if provider_name:
+            cmd.extend(["--provider", provider_name])
+
+        completed = subprocess.run(
+            cmd, cwd=str(base_dir), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, timeout=300,
+        )
+        output = completed.stdout or ""
+        if completed.returncode != 0:
+            raise RuntimeError(output[-5000:] or f"Manual search exited with code {completed.returncode}")
+
+        start_marker = "QUICK_SEARCH_RESULTS_START"
+        end_marker = "QUICK_SEARCH_RESULTS_END"
+        if start_marker not in output or end_marker not in output:
+            raise RuntimeError("Manual search completed without a valid result payload. Check Technical Logs.")
+        payload_text = output.split(start_marker, 1)[1].split(end_marker, 1)[0].strip()
+        leads = json.loads(payload_text)
+        if not isinstance(leads, list):
+            raise RuntimeError("Manual search returned an invalid result list.")
+
+        db = OutreachDatabase(DB_PATH)
+        try:
+            db.connection.execute(
+                "INSERT INTO search_history (query, executed_at_utc) VALUES (?, ?)",
+                (query, utc_now()),
+            )
+            db.connection.commit()
+        finally:
+            db.close()
+
+        _write_manual_search_job(job_id, {
+            "job_id": job_id, "status": "COMPLETED", "query": query,
+            "campaign_id": campaign_id, "provider": provider_name,
+            "count": len(leads), "leads": leads
+        })
+    except Exception as exc:
+        logging.exception("Manual search job %s failed", job_id)
+        _write_manual_search_job(job_id, {
+            "job_id": job_id, "status": "FAILED", "query": query,
+            "campaign_id": campaign_id, "provider": provider_name,
+            "count": 0, "leads": [], "error": str(exc)[:5000]
+        })
+
+
+@app.get("/api/search_providers")
+def api_search_providers(user: dict = Depends(get_current_user)):
+    from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProvider, BraveProvider
+    providers = [DuckDuckGoProvider(), BingProvider(), SearXNGProvider(), BraveProvider()]
+    return [{"id": p.name, "name": p.name.replace("Provider", ""), "enabled": bool(p.enabled)} for p in providers]
+
+
+@app.post("/api/quick_search")
+def api_quick_search(req: QuickSearchRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+    if len(query) > 2000:
+        raise HTTPException(status_code=400, detail="Query is too long (maximum 2000 characters).")
+
+    max_leads = max(1, min(int(req.max_leads or 25), 100))
+    provider_name = req.provider.strip() if req.provider else None
+
+    from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProvider, BraveProvider
+    providers = {p.name: p for p in [DuckDuckGoProvider(), BingProvider(), SearXNGProvider(), BraveProvider()]}
+    if provider_name:
+        provider = providers.get(provider_name)
+        if not provider:
+            raise HTTPException(status_code=400, detail="Unknown search provider.")
+        if not provider.enabled:
+            raise HTTPException(status_code=400, detail=f"{provider_name.replace('Provider', '')} is disabled in Settings.")
+
+    if req.campaign_id is not None:
+        db = OutreachDatabase(DB_PATH)
+        campaign = db.connection.execute("SELECT id FROM research_campaigns WHERE id=?", (req.campaign_id,)).fetchone()
+        db.close()
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Research Campaign not found.")
+
+    job_id = secrets.token_hex(8)
+    _write_manual_search_job(job_id, {
+        "job_id": job_id, "status": "QUEUED", "query": query,
+        "campaign_id": req.campaign_id, "provider": provider_name,
+        "count": 0, "leads": []
+    })
+    background_tasks.add_task(_run_manual_search_job, job_id, query, req.campaign_id, provider_name, max_leads)
+    return {"success": True, "job_id": job_id, "status": "QUEUED"}
+
+
+@app.get("/api/quick_search/{job_id}")
+def api_quick_search_status(job_id: str, user: dict = Depends(get_current_user)):
+    if not job_id or any(ch not in "0123456789abcdef" for ch in job_id.lower()):
+        raise HTTPException(status_code=400, detail="Invalid search job id.")
+    path = _manual_search_job_path(job_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Search job not found.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/quick_search/save")
+def api_quick_search_save(req: QuickSearchSaveRequest, user: dict = Depends(get_current_user)):
+    if not req.leads:
+        raise HTTPException(status_code=400, detail="There are no leads to save.")
+    db = OutreachDatabase(DB_PATH)
+    campaign = db.connection.execute("SELECT id FROM research_campaigns WHERE id=?", (req.campaign_id,)).fetchone()
+    db.close()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Research Campaign not found.")
+
+    from public_osint_market_research import LeadStore
+    from osint_engine.models import DiscoveredLead
+    store = LeadStore(DB_PATH)
+    inserted = 0
+    try:
+        for raw in req.leads[:100]:
+            try:
+                lead = DiscoveredLead(
+                    email=normalize_email(str(raw.get("email", ""))),
+                    domain=str(raw.get("domain", "")),
+                    source_url=str(raw.get("source_url", "")),
+                    source_type=str(raw.get("source_type", "public_web")),
+                    engine=str(raw.get("engine", "manual")),
+                    confidence_type=str(raw.get("confidence_type", "")),
+                    email_confidence=float(raw.get("email_confidence", 0) or 0),
+                    query=str(raw.get("query", "")),
+                    company_name=str(raw.get("company_name", "")) or None,
+                    relevance_score=int(raw.get("relevance_score", 0) or 0),
+                    why_matched=str(raw.get("why_matched", "")),
+                )
+            except (TypeError, ValueError):
+                continue
+            if not lead.email or "@" not in lead.email:
+                continue
+            if store.save_lead(lead, query_run_id=f"manual_{secrets.token_hex(6)}", research_campaign_id=req.campaign_id):
+                inserted += 1
+    finally:
+        store.connection.close()
+    return {"success": True, "inserted": inserted, "submitted": min(len(req.leads), 100)}
+
+
 @app.get("/api/query_history")
 def get_query_history(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
