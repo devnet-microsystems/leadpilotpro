@@ -27,7 +27,7 @@ app = FastAPI(title="LeadPilot Pro")
 
 ROOT = Path(__file__).parent
 DB_PATH = Path(os.environ.get("LEADPILOT_DB_PATH", str(ROOT / "outreach_queue.sqlite3"))).expanduser()
-AUDIT_PATH = Path(os.environ.get("LEADPILOT_AUDIT_PATH", str(DB_PATH.with_name("outreach_audit.jsonl"))).expanduser())
+AUDIT_PATH = Path(os.environ.get("LEADPILOT_AUDIT_PATH", str(DB_PATH.with_name("outreach_audit.jsonl")))).expanduser()
 STATIC_DIR = ROOT / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
