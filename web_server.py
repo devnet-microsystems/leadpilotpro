@@ -2164,6 +2164,89 @@ def approve_product_campaign(id: int, user: dict = Depends(get_current_user)):
 
 
 
+@app.post("/api/product_campaigns/{id}/export_to_outreach")
+def export_product_campaign_to_outreach(id: int, payload: dict = None, user: dict = Depends(get_current_user)):
+    """Export an approved product sequence into legacy Outreach campaigns/templates.
+
+    One legacy campaign is created per sequence step so the existing sender remains
+    fully compatible. Export never approves prospects and never sends email.
+    Existing campaigns/templates with the same names are preserved.
+    """
+    camp = get_product_campaign(str(DB_PATH), id)
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if camp.get("status") not in {"APPROVED", "ACTIVE"}:
+        raise HTTPException(status_code=400, detail="Only APPROVED or ACTIVE campaigns can be exported")
+
+    messages = camp.get("messages") or []
+    if len(messages) != camp.get("sequence_length"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sequence length mismatch. Expected {camp.get('sequence_length')}, got {len(messages)}"
+        )
+
+    db = OutreachDatabase(DB_PATH)
+    created = []
+    existing = []
+    warnings = [
+        "Each sequence step is exported as a separate legacy campaign/template.",
+        "Export does not send email and does not modify prospect approval status."
+    ]
+    add_footer = True if payload is None else bool(payload.get("add_footer", True))
+
+    for index, msg in enumerate(messages, start=1):
+        step_name = f"{camp['name']} — Step {index}"
+        template_name = f"{step_name}.txt"
+        subject = (msg.get("subject") or "").strip()
+        body = (msg.get("body") or "").strip()
+        if not subject or not body:
+            warnings.append(f"Step {index} skipped because subject or body is empty.")
+            continue
+
+        content = f"Subject: {subject}\n\n{body}"
+        if add_footer:
+            content += "\n\n---\nIf you prefer not to receive further messages, reply and let us know."
+
+        template_row = db.connection.execute(
+            "SELECT 1 FROM templates WHERE name = ? LIMIT 1",
+            (template_name,)
+        ).fetchone()
+        campaign_row = db.connection.execute(
+            "SELECT id FROM campaigns WHERE name = ? LIMIT 1",
+            (step_name,)
+        ).fetchone()
+
+        if template_row or campaign_row:
+            existing.append({
+                "campaign": step_name,
+                "template": template_name
+            })
+            continue
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.connection.execute(
+            "INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
+            (template_name, content, now)
+        )
+        db.connection.execute(
+            "INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, ?, ?)",
+            (step_name, template_name, now)
+        )
+        created.append({
+            "campaign": step_name,
+            "template": template_name
+        })
+
+    db.connection.commit()
+    return {
+        "success": True,
+        "created": created,
+        "existing": existing,
+        "warnings": warnings,
+        "sent": False
+    }
+
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(scheduler_loop())
