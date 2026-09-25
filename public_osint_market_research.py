@@ -141,6 +141,18 @@ class LeadStore:
             )
         """)
 
+        # Keep the standalone OSINT schema compatible with the main DB schema.
+        for column, sql_type in (
+            ("evidence_reviewed_at", "TEXT"),
+            ("evidence_reviewed_by", "TEXT"),
+        ):
+            try:
+                self.connection.execute(
+                    f"ALTER TABLE prospect_product_fit ADD COLUMN {column} {sql_type}"
+                )
+            except sqlite3.OperationalError:
+                pass
+
         self.connection.commit()
 
     def _utc_now(self) -> str:
