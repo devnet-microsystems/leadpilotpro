@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status, File, UploadFile
 from fastapi.staticfiles import StaticFiles
@@ -1057,11 +1058,9 @@ def run_send_task(campaign: str, limit: int):
             f.write(f"Error: Template not found.\n")
         return
         
-    venv_python = ROOT / ".venv" / "bin" / "python"
-    
     with open(SEND_LOG_PATH, "a") as f:
         subprocess.run([
-            str(venv_python), "-u", str(ROOT / "outreach_sender.py"),
+            sys.executable, "-u", str(ROOT / "outreach_sender.py"),
             "--database", str(DB_PATH),
             "--audit-log", str(AUDIT_PATH),
             "send",
