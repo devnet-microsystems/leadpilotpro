@@ -390,3 +390,78 @@ input[type="text"]:focus, select:focus {
   border-bottom: 2px solid var(--primary);
   color: var(--primary);
 }
+
+/* P5.4 top-level application shell */
+.app-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+.brand-block {
+  min-width: 240px;
+  padding-bottom: 1rem;
+}
+.brand-block h1 { margin: 0; }
+.brand-block p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin: 0.45rem 0 0;
+}
+.app-nav {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  flex: 1;
+  gap: .35rem;
+  overflow: visible;
+  white-space: nowrap;
+}
+.app-nav > .tab {
+  border-radius: 8px 8px 0 0;
+}
+.app-nav .primary-nav {
+  color: var(--accent);
+  font-weight: 700;
+}
+.header-actions { padding-bottom: 1rem; }
+.btn-logout {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.nav-advanced {
+  margin-left: .35rem;
+  font-size: .68rem;
+  opacity: .7;
+  text-transform: uppercase;
+}
+.hero-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(16,185,129,.12), rgba(59,130,246,.07));
+}
+.hero-card h3 { margin: .35rem 0 .55rem; font-size: 1.5rem; }
+.hero-card p { margin: 0; color: var(--text-muted); max-width: 720px; line-height: 1.6; }
+.eyebrow {
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.hero-cta { white-space: nowrap; padding: .8rem 1.3rem; }
+@media (max-width: 900px) {
+  .app-header { align-items: flex-start; flex-wrap: wrap; gap: 1rem; }
+  .brand-block { min-width: 0; flex: 1; }
+  .app-nav { order: 3; width: 100%; justify-content: flex-start; overflow-x: auto; }
+  .hero-card { flex-direction: column; align-items: flex-start; }
+  .header-actions { padding-bottom: 0; }
+}
