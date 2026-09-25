@@ -539,16 +539,25 @@ def create_icp(req: ICPRequest, user: dict = Depends(get_current_user)):
     return {"success": True}
 
 @app.get("/api/research_campaigns")
-def get_research_campaigns(user: dict = Depends(get_current_user)):
+def get_research_campaigns(product_id: int = None, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists(): return []
     db = OutreachDatabase(DB_PATH)
-    rows = db.connection.execute("""
-        SELECT rc.*, o.name as offer_name, i.name as icp_name 
+
+    # Optional product filter keeps the legacy endpoint backward-compatible
+    # while supporting the product-driven P5.x frontend.
+    query = """
+        SELECT rc.*, o.name as offer_name, i.name as icp_name
         FROM research_campaigns rc
         LEFT JOIN sales_offers o ON rc.offer_id = o.id
         LEFT JOIN ideal_customer_profiles i ON rc.icp_id = i.id
-        ORDER BY rc.created_at_utc DESC
-    """).fetchall()
+    """
+    params = ()
+    if product_id is not None:
+        query += " WHERE rc.product_id = ?"
+        params = (product_id,)
+    query += " ORDER BY rc.created_at_utc DESC"
+
+    rows = db.connection.execute(query, params).fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/research_campaigns")
