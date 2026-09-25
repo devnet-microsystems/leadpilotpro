@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -1790,6 +1790,56 @@ def api_add_product_source(id: int, req: ProductSourceRequest, user: dict = Depe
         language=source_content.language
     )
     return {"success": True, "source_id": src["id"]}
+
+@app.post("/api/products/{id}/sources/pdf")
+async def api_add_product_pdf(id: int, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Upload one PDF source using the existing hardened PDF extractor."""
+    from product_intelligence.store import get_product, add_source, list_sources
+    from product_intelligence.extractor import extract_from_pdf, MAX_PDF_SOURCES
+
+    product = get_product(str(DB_PATH), id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    existing_pdf_count = sum(
+        1 for source in list_sources(str(DB_PATH), id)
+        if str(source.get("source_type", "")).upper() == "PDF"
+    )
+    if existing_pdf_count >= MAX_PDF_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF source limit reached ({MAX_PDF_SOURCES} per product)."
+        )
+
+    filename = Path(file.filename or "document.pdf").name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    raw = await file.read()
+    try:
+        source_content = extract_from_pdf(raw, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    src = add_source(
+        str(DB_PATH),
+        product_id=id,
+        source_type=source_content.source_type.value,
+        source_name=source_content.source_name,
+        source_url=source_content.source_url,
+        extracted_text=source_content.extracted_text,
+        content_hash=source_content.content_hash,
+        language=source_content.language
+    )
+    return {
+        "success": True,
+        "source_id": src["id"],
+        "filename": filename,
+        "pages": source_content.metadata.get("pages", 0),
+        "word_count": source_content.word_count,
+        "char_count": source_content.char_count
+    }
+
 
 @app.get("/api/products/{id}/sources")
 def api_get_product_sources(id: int, user: dict = Depends(get_current_user)):
