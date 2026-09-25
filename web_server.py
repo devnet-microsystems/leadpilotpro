@@ -1616,12 +1616,19 @@ def orchestrator_pipeline_status(product_id: int, user: dict = Depends(get_curre
     
     exported = 0
     
+    campaign_row = db.connection.execute(
+        "SELECT id, status FROM research_campaigns WHERE product_id = ? ORDER BY id DESC LIMIT 1",
+        (product_id,)
+    ).fetchone()
+
     return {
         "discovered": discovered,
         "qualified": qualified,
         "rejected": rejected,
         "approved": approved,
-        "exported": exported
+        "exported": exported,
+        "campaign_id": campaign_row["id"] if campaign_row else None,
+        "campaign_status": campaign_row["status"] if campaign_row else None
     }
 
 @app.post("/api/orchestrator/evaluate_fit")
