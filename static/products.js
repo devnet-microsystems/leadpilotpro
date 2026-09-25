@@ -80,13 +80,9 @@ async function analyzeProduct(productId) {
 
 function toggleProductSourceInput() {
     const type = document.getElementById('add-product-type').value;
-    if (type === 'URL') {
-        document.getElementById('add-product-url-container').style.display = 'block';
-        document.getElementById('add-product-text-container').style.display = 'none';
-    } else {
-        document.getElementById('add-product-url-container').style.display = 'none';
-        document.getElementById('add-product-text-container').style.display = 'block';
-    }
+    document.getElementById('add-product-url-container').style.display = type === 'URL' ? 'block' : 'none';
+    document.getElementById('add-product-pdf-container').style.display = type === 'PDF' ? 'block' : 'none';
+    document.getElementById('add-product-text-container').style.display = type === 'TEXT' ? 'block' : 'none';
 }
 
 async function submitNewProduct() {
@@ -94,10 +90,13 @@ async function submitNewProduct() {
     const type = document.getElementById('add-product-type').value;
     const url = document.getElementById('add-product-url').value.trim();
     const text = document.getElementById('add-product-text').value.trim();
+    const pdf = document.getElementById('add-product-pdf').files[0];
     
     if (!name) return showToast('Product Name is required', 'error');
     if (type === 'URL' && !url) return showToast('Source URL is required', 'error');
     if (type === 'TEXT' && !text) return showToast('Source Text is required', 'error');
+    if (type === 'PDF' && !pdf) return showToast('Select a PDF document', 'error');
+    if (type === 'PDF' && pdf.size > 20 * 1024 * 1024) return showToast('PDF must be 20 MB or smaller', 'error');
     
     const contentPayload = type === 'URL' ? url : text;
     
@@ -116,11 +115,20 @@ async function submitNewProduct() {
         const productId = product.id;
         
         // 2. Add Source
-        res = await fetch(`/api/products/${productId}/sources`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({source_type: type, content: contentPayload})
-        });
+        if (type === 'PDF') {
+            const form = new FormData();
+            form.append('file', pdf);
+            res = await fetch(`/api/products/${productId}/sources/pdf`, {
+                method: 'POST',
+                body: form
+            });
+        } else {
+            res = await fetch(`/api/products/${productId}/sources`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source_type: type, content: contentPayload})
+            });
+        }
         if (!res.ok) {
             let errMsg = `Failed to add source ${type}`;
             try {
@@ -139,6 +147,7 @@ async function submitNewProduct() {
         document.getElementById('add-product-name').value = '';
         document.getElementById('add-product-url').value = '';
         document.getElementById('add-product-text').value = '';
+        document.getElementById('add-product-pdf').value = '';
         showToast('Product created and analysis started!', 'success');
         
         await loadProductsList();
