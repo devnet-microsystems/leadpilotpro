@@ -2442,8 +2442,16 @@ def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends
         
     product, product_profile = load_product_profile(str(DB_PATH), req.product_id)
     
-    # Save DRAFT campaign
+    # Save or reuse campaign container. Non-DRAFT campaigns are immutable from generation.
     cid = upsert_product_campaign(str(DB_PATH), req.dict())
+    existing_campaign = get_product_campaign(str(DB_PATH), cid)
+    if existing_campaign and existing_campaign.get("status") != "DRAFT":
+        return {
+            "success": True,
+            "campaign_id": cid,
+            "status": existing_campaign.get("status"),
+            "skipped": True,
+        }
     
     # Generate Sequence
     agent = EmailSequenceAgent(str(DB_PATH))
