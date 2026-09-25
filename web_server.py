@@ -1682,7 +1682,7 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     product = conn.execute("SELECT status FROM products WHERE id = ?", (product_id,)).fetchone()
     if not product or product[0] != "READY":
         conn.close()
-        raise HTTPException(status_code=400, detail="Questo prodotto non è ancora stato analizzato dall'IA. Vai nella tab 'Sell a Product', seleziona il prodotto e clicca 'Analyze Product / Market' prima di avviare l'Auto-Pilot.")
+        raise HTTPException(status_code=400, detail="Questo prodotto non è ancora stato analizzato dall'IA. Vai in Research > Products, completa l'analisi e poi torna in Find Customers.")
 
     rc = conn.execute("SELECT id FROM research_campaigns WHERE product_id = ? ORDER BY id DESC LIMIT 1", (product_id,)).fetchone()
     if not rc:
