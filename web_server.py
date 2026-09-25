@@ -2546,134 +2546,29 @@ def approve_product_campaign(id: int, user: dict = Depends(get_current_user)):
 
 @app.post("/api/product_campaigns/{id}/export_to_outreach")
 def export_product_campaign_to_outreach(id: int, payload: dict = None, user: dict = Depends(get_current_user)):
-    """Export an approved product sequence into legacy Outreach campaigns/templates.
+    """Export an APPROVED/ACTIVE product sequence through the single legacy bridge.
 
-    One legacy campaign is created per sequence step so the existing sender remains
-    fully compatible. Export never approves prospects and never sends email.
-    Existing campaigns/templates with the same names are preserved.
+    The bridge is intentionally the only conversion layer between P5.x
+    double-brace placeholders and the legacy sender template contract.
+    Export never approves prospects and never sends email.
     """
-    camp = get_product_campaign(str(DB_PATH), id)
-    if not camp:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    if camp.get("status") not in {"APPROVED", "ACTIVE"}:
-        raise HTTPException(status_code=400, detail="Only APPROVED or ACTIVE campaigns can be exported")
+    from product_intelligence.outreach_bridge import export_to_outreach
 
-    messages = camp.get("messages") or []
-    if len(messages) != camp.get("sequence_length"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Sequence length mismatch. Expected {camp.get('sequence_length')}, got {len(messages)}"
-        )
-
-    db = OutreachDatabase(DB_PATH)
-    created = []
-    existing = []
-    warnings = [
-        "Each sequence step is exported as a separate legacy campaign/template.",
-        "Export does not send email and does not modify prospect approval status."
-    ]
     add_footer = True if payload is None else bool(payload.get("add_footer", True))
+    try:
+        result = export_to_outreach(str(DB_PATH), id, add_footer=add_footer)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    for index, msg in enumerate(messages, start=1):
-        step_name = f"{camp['name']} — Step {index}"
-        template_name = f"{step_name}.txt"
-        subject = (msg.get("subject") or "").strip()
-        body = (msg.get("body") or "").strip()
-        if not subject or not body:
-            warnings.append(f"Step {index} skipped because subject or body is empty.")
-            continue
-
-        import re
-        from string import Formatter
-
-        # P5.4 legacy bridge:
-        # P5.3 uses {{double_brace}} placeholders while the legacy sender
-        # supports only its explicit single-brace template contract.
-        legacy_placeholder_map = {
-            "company_name": "{company_name}",
-            "why_matched": "{reason_for_contact}",
-            "matched_signal": "{reason_for_contact}",
-        }
-        combined = f"Subject: {subject}\n\n{body}"
-        p53_placeholders = set(re.findall(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", combined))
-        unsupported = sorted(p for p in p53_placeholders if p not in legacy_placeholder_map)
-        if unsupported:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Sequence step {index} uses placeholders not supported by the legacy sender: "
-                    + ", ".join(f"{{{{{p}}}}}" for p in unsupported)
-                ),
-            )
-
-        for name, legacy_field in legacy_placeholder_map.items():
-            combined = re.sub(
-                rf"\{{\{{\s*{re.escape(name)}\s*\}}\}}",
-                legacy_field,
-                combined,
-            )
-
-        fields = {field_name for _, field_name, _, _ in Formatter().parse(combined) if field_name}
-        allowed_legacy_fields = {
-            "company_name",
-            "domain",
-            "target_url",
-            "reason_for_contact",
-            "company",
-            "website",
-            "reply_to",
-            "unsubscribe_address",
-        }
-        unknown_fields = fields - allowed_legacy_fields
-        if unknown_fields:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Legacy template contains unsupported fields: {sorted(unknown_fields)}",
-            )
-
-        content = combined
-        if add_footer:
-            content += "\n\n---\nIf you prefer not to receive further messages, reply and let us know."
-
-        template_row = db.connection.execute(
-            "SELECT 1 FROM templates WHERE name = ? LIMIT 1",
-            (template_name,)
-        ).fetchone()
-        campaign_row = db.connection.execute(
-            "SELECT id FROM campaigns WHERE name = ? LIMIT 1",
-            (step_name,)
-        ).fetchone()
-
-        if template_row or campaign_row:
-            existing.append({
-                "campaign": step_name,
-                "template": template_name
-            })
-            continue
-
-        now = datetime.now(timezone.utc).isoformat()
-        db.connection.execute(
-            "INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
-            (template_name, content, now)
-        )
-        db.connection.execute(
-            "INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, ?, ?)",
-            (step_name, template_name, now)
-        )
-        created.append({
-            "campaign": step_name,
-            "template": template_name
-        })
-
-    db.connection.commit()
     return {
         "success": True,
-        "created": created,
-        "existing": existing,
-        "warnings": warnings,
-        "sent": False
+        **result,
+        "sent": False,
     }
-
 
 @app.on_event("startup")
 async def startup_event():
