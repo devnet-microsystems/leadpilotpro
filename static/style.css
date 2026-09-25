@@ -600,3 +600,9 @@ input[type="text"]:focus, select:focus {
 @media (max-width: 650px) {
   .fc-source-add { grid-template-columns:1fr; }
 }
+
+.fc-score {
+  display:inline-block; padding:.2rem .45rem; border:1px solid rgba(16,185,129,.35);
+  border-radius:999px; color:var(--accent); background:rgba(16,185,129,.08);
+  font-size:.68rem; font-weight:700;
+}
