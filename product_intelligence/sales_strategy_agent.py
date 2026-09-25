@@ -73,8 +73,46 @@ class SalesStrategyAgent:
         if not raw:
             return {"status": "FAILED", "error": f"AI generation failed: {self.provider.last_error}"}
             
-        return self._parse_json(raw)
+        result = self._parse_json(raw)
+        if result.get("status") == "SUCCESS":
+            result["market"] = market
+            result["language"] = language
+            result["target_segment"] = target_segment
+            result["buyer_role"] = buyer_role
+        return result
         
+    @staticmethod
+    def _validate_strategy_payload(strategy: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        required_types = {
+            "market": str,
+            "language": str,
+            "target_segment": str,
+            "buyer_role": str,
+            "core_value_proposition": str,
+            "pain_points": list,
+            "proof_points": list,
+            "primary_cta": str,
+            "tone": str,
+            "sequence_strategy": str,
+            "personalization_fields": list,
+        }
+        missing = [k for k, t in required_types.items() if k not in strategy or not isinstance(strategy[k], t)]
+        if missing:
+            return {"status": "FAILED", "error": "Strategy missing or invalid fields: " + ", ".join(missing)}
+
+        for key in ("core_value_proposition", "primary_cta", "tone", "sequence_strategy"):
+            if not str(strategy[key]).strip():
+                return {"status": "FAILED", "error": "Strategy field '" + key + "' is empty."}
+
+        for key in ("pain_points", "proof_points"):
+            if any(not isinstance(item, str) or not item.strip() for item in strategy[key]):
+                return {"status": "FAILED", "error": "Strategy field '" + key + "' contains invalid items."}
+
+        invalid_fields = [field for field in strategy["personalization_fields"] if field not in ALLOWED_FIELDS]
+        if invalid_fields:
+            return {"status": "FAILED", "error": "Invalid personalization fields: " + str(invalid_fields)}
+
+        return strategy
     def _parse_json(self, raw: str) -> Dict[str, Any]:
         raw = raw.strip()
         if raw.startswith("```json"):
@@ -87,18 +125,24 @@ class SalesStrategyAgent:
         
         try:
             strategy = json.loads(raw)
-            strategy["status"] = "SUCCESS"
-            return strategy
         except json.JSONDecodeError as e:
             match = re.search(r"\{.*\}", raw, re.DOTALL)
             if match:
                 try:
                     strategy = json.loads(match.group(0))
-                    strategy["status"] = "SUCCESS"
-                    return strategy
                 except Exception:
                     pass
             return {"status": "FAILED", "error": f"Invalid JSON output: {e}"}
+
+        if not isinstance(strategy, dict):
+            return {"status": "FAILED", "error": "AI output must be a JSON object."}
+
+        validated = self._validate_strategy_payload(strategy)
+        if validated and validated.get("status") == "FAILED":
+            return validated
+
+        strategy["status"] = "SUCCESS"
+        return strategy
 
 
 SEQUENCE_SCHEMA_PROMPT = """
@@ -240,13 +284,17 @@ class EmailSequenceAgent:
                 if p not in ALLOWED_FIELDS:
                     return {"status": "FAILED", "error": f"Invalid placeholder '{p}' used in message {seq_order}."}
                     
+            cta = str(msg.get("cta", "")).strip()
+            if not cta:
+                return {"status": "FAILED", "error": f"Message {seq_order} is missing a CTA."}
+
             validated.append({
                 "sequence_order": seq_order,
                 "purpose": msg.get("purpose", f"step_{seq_order}"),
-                "language": msg.get("language", language),
+                "language": language,
                 "subject": subject,
                 "body": body,
-                "cta": msg.get("cta", ""),
+                "cta": cta,
                 "delay_days": self._as_int(msg.get("delay_days"), default_delays.get(seq_order, 5)),
                 "personalization_fields": list(set(placeholders))
             })
