@@ -235,11 +235,13 @@ class OutreachDatabase:
             import os
             import secrets
 
-            # Prima l'admin era sempre "admin"/"admin": chiunque raggiungesse /api/login su
-            # un'installazione nuova entrava. Ora la password e' casuale e viene scritta UNA
-            # SOLA volta in un file accanto al database, cosi' solo chi ha accesso al filesystem
-            # la vede (mai in un log, mai su stdout).
-            generated_password = secrets.token_urlsafe(15)
+            # Supporta un bootstrap esplicito tramite variabile d'ambiente Render.
+            # In assenza della variabile resta il comportamento sicuro di default:
+            # password casuale mai stampata nei log.
+            configured_password = os.environ.get("LEADPILOT_ADMIN_PASSWORD", "").strip()
+            if configured_password and len(configured_password) < 12:
+                raise RuntimeError("LEADPILOT_ADMIN_PASSWORD must be at least 12 characters")
+            generated_password = configured_password or secrets.token_urlsafe(15)
             salt = os.urandom(16)
             password_hash = hashlib.pbkdf2_hmac('sha256', generated_password.encode(), salt, 100000)
             self.connection.execute(
