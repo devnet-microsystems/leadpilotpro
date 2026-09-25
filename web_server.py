@@ -608,12 +608,12 @@ def get_research_campaigns(product_id: int = None, user: dict = Depends(get_curr
 @app.post("/api/research_campaigns")
 def create_research_campaign(req: ResearchCampaignRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
-    db.connection.execute(
+    campaign_cur = db.connection.execute(
         "INSERT INTO research_campaigns (name, offer_id, icp_id, status, created_at_utc) VALUES (?, ?, ?, 'DRAFT', ?)",
         (req.name.strip(), req.offer_id, req.icp_id, datetime.now(timezone.utc).isoformat())
     )
     # Also trigger template generation for the campaign
-    campaign_id = db.connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+    campaign_id = campaign_cur.lastrowid
     db.connection.commit()
     
     # Generate queries automatically
