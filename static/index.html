@@ -70,7 +70,41 @@
                     <h2>Sell This Product</h2>
                     <p style="color: var(--text-muted); margin: 0;">Guided Sales Orchestration Pipeline</p>
                 </div>
-                <div id="orchestrator-root"></div>
+                <div id="manual-search-tools" class="fc-panel" style="margin-bottom:1.25rem;border-left:4px solid var(--primary);">
+    <div class="fc-panel-head">
+        <div>
+            <span class="fc-step">MANUAL</span>
+            <h3>Search Customers Manually</h3>
+            <p>Write your own query, choose the search provider, inspect the results, then send them through the normal review and approval flow.</p>
+        </div>
+        <div class="fc-intro-badge">Human-controlled</div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(280px,2fr) minmax(180px,1fr) minmax(240px,1.4fr) 120px;gap:.75rem;align-items:end;">
+        <div>
+            <label for="fc-manual-query" style="display:block;color:var(--text-muted);font-size:.8rem;margin-bottom:.35rem;">Search query</label>
+            <input id="fc-manual-query" type="text" placeholder="e.g. luxury web agencies Dubai" style="width:100%;padding:.75rem;border-radius:8px;">
+        </div>
+        <div>
+            <label for="fc-manual-provider" style="display:block;color:var(--text-muted);font-size:.8rem;margin-bottom:.35rem;">Provider</label>
+            <select id="fc-manual-provider" style="width:100%;padding:.75rem;border-radius:8px;"></select>
+        </div>
+        <div>
+            <label for="fc-manual-campaign" style="display:block;color:var(--text-muted);font-size:.8rem;margin-bottom:.35rem;">Research Campaign (optional)</label>
+            <select id="fc-manual-campaign" style="width:100%;padding:.75rem;border-radius:8px;"></select>
+        </div>
+        <div>
+            <button id="fc-manual-search-btn" class="btn-success" style="width:100%;" onclick="runManualSearch()">Search Now</button>
+        </div>
+    </div>
+    <div id="fc-manual-search-status" style="margin-top:.75rem;color:var(--text-muted);"></div>
+    <div id="fc-manual-search-results" style="margin-top:1rem;"></div>
+    <div class="fc-action-row" style="margin-top:1rem;">
+        <button class="btn-secondary" onclick="switchTab('pending')">Review Leads →</button>
+        <button class="btn-secondary" onclick="switchTab('send')">Sender Queue →</button>
+        <button class="btn-secondary" onclick="switchTab('quicksend')">Manual Contacts / Send →</button>
+    </div>
+</div>
+<div id="orchestrator-root"></div>
             </div>
 
             <!-- Overview Tab -->
