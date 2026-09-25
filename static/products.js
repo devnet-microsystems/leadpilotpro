@@ -204,7 +204,7 @@ async function openProductSources(productId) {
                 <div class="fc-source-row">
                     <span class="fc-status">${escapeHtml(s.source_type || 'SOURCE')}</span>
                     <span style="flex:1;">${escapeHtml(s.source_name || 'Unnamed source')}</span>
-                    <span class="fc-muted">${Number(s.word_count || 0).toLocaleString()} words</span>
+                    <span class="fc-muted">${s.source_url ? 'URL source' : 'Local document'}</span>
                 </div>`).join('');
         };
         renderSources(Array.isArray(sources) ? sources : []);
