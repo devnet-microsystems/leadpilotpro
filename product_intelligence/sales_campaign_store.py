@@ -8,6 +8,7 @@ Operates on:
 - email_sequence_messages
 """
 import sqlite3
+import db_connector
 import json
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
@@ -21,7 +22,7 @@ def upsert_strategy(db_path: str, strategy: Dict[str, Any]) -> int:
     Unique identity: (product_id, research_campaign_id, market, language, target_segment, buyer_role).
     Returns the strategy_id.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         pid = strategy["product_id"]
@@ -101,7 +102,7 @@ def upsert_product_campaign(db_path: str, campaign: Dict[str, Any]) -> int:
     If the campaign exists and its status is NOT 'DRAFT', it is not overwritten, 
     and the existing ID is returned without modifications.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         pid = campaign["product_id"]
@@ -163,7 +164,7 @@ def save_sequence_messages(db_path: str, campaign_id: int, messages: List[Dict[s
     Saves a sequence of emails for a campaign.
     Requires the campaign to be in DRAFT status. Replaces existing DRAFT messages for this campaign.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         camp = conn.execute("SELECT status FROM product_campaigns WHERE id=?", (campaign_id,)).fetchone()
@@ -205,7 +206,7 @@ def get_product_campaign(db_path: str, campaign_id: int) -> Optional[Dict[str, A
     """
     Returns the campaign with its strategy and messages.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         camp = conn.execute("SELECT * FROM product_campaigns WHERE id=?", (campaign_id,)).fetchone()
@@ -243,7 +244,7 @@ def list_product_campaigns(db_path: str, product_id: int) -> List[Dict[str, Any]
     """
     Lists all product campaigns for a given product.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         camps = conn.execute("SELECT * FROM product_campaigns WHERE product_id=? ORDER BY created_at_utc DESC", (product_id,)).fetchall()
@@ -252,7 +253,7 @@ def list_product_campaigns(db_path: str, product_id: int) -> List[Dict[str, Any]
         conn.close()
 
 def get_strategy_by_identity(db_path: str, product_id: int, research_campaign_id: int, market: str, language: str, target_segment: str, buyer_role: str) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute("""

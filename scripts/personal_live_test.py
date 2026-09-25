@@ -6,6 +6,7 @@ Entrypoint for personal live test sending ONE message using Infomaniak SMTP.
 import os
 import sys
 import sqlite3
+import db_connector
 from pathlib import Path
 
 # Add project root to sys.path so imports work
@@ -67,7 +68,7 @@ def main() -> int:
             print("Message submission failed or already executed.")
 
         # Steps 7-8: Verify tables
-        conn = sqlite3.connect(db_path)
+        conn = db_connector.get_connection(db_path)
         jobs = conn.execute("SELECT * FROM outbound_jobs WHERE campaign_id=0 AND prospect_id=0 AND sequence_step=0").fetchall()
         archives = conn.execute("SELECT * FROM email_archive WHERE campaign_id=0").fetchall()
         

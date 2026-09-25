@@ -7,6 +7,7 @@ the concrete implementation reads config from the DB `settings` table.
 """
 import json
 import sqlite3
+import db_connector
 import urllib.request
 import logging
 from abc import ABC, abstractmethod
@@ -69,7 +70,7 @@ class OpenAICompatibleProvider(AIProvider):
 
     def _load_config(self) -> None:
         try:
-            conn = sqlite3.connect(self._db_path)
+            conn = db_connector.get_connection(self._db_path)
             rows = conn.execute(
                 "SELECT key, value FROM settings WHERE key IN ('ai_api_key','ai_base_url','ai_model')"
             ).fetchall()

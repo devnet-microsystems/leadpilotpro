@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import db_connector
 from pathlib import Path
 from typing import List, Dict
 
@@ -9,7 +10,7 @@ class QueryGenerator:
         
     def generate_templates_for_campaign(self, campaign_id: int):
         """Populate query_templates table with default templates for a new campaign."""
-        conn = sqlite3.connect(self.db_path)
+        conn = db_connector.get_connection(self.db_path)
         conn.row_factory = sqlite3.Row
         
         # Check if templates already exist
@@ -60,7 +61,7 @@ class QueryGenerator:
 
     def get_concrete_queries(self, campaign_id: int) -> List[Dict]:
         """Returns a list of all expanded query strings ready for execution."""
-        conn = sqlite3.connect(self.db_path)
+        conn = db_connector.get_connection(self.db_path)
         conn.row_factory = sqlite3.Row
         
         camp = conn.execute("SELECT icp_id FROM research_campaigns WHERE id=?", (campaign_id,)).fetchone()

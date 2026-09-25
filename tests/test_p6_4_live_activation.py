@@ -1,5 +1,6 @@
 import pytest
 import sqlite3
+import db_connector
 from unittest.mock import patch
 
 from infomaniak_adapter import InfomaniakSMTPAdapter
@@ -65,7 +66,7 @@ def test_personal_live_activation_exactly_one_message(mock_smtp, test_db):
     assert mock_instance.send_message.call_count == 1
     
     # 3. Verify exactly one outbound job
-    conn = sqlite3.connect(test_db)
+    conn = db_connector.get_connection(test_db)
     jobs = conn.execute("SELECT * FROM outbound_jobs WHERE campaign_id=0").fetchall()
     assert len(jobs) == 1
     assert jobs[0][4] == "completed" # status

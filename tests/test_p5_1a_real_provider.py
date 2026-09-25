@@ -14,6 +14,7 @@ Run manually:
 import json
 import os
 import sqlite3
+import db_connector
 import sys
 import time
 from datetime import datetime, timezone
@@ -64,7 +65,7 @@ def tmp_db(tmp_path_factory):
                               "https://generativelanguage.googleapis.com/v1beta/openai/")
     model = os.environ.get("AI_MODEL", "gemini-1.5-flash")
 
-    conn = sqlite3.connect(db)
+    conn = db_connector.get_connection(db)
     conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
     for k, v in [("ai_api_key", key), ("ai_base_url", base_url), ("ai_model", model)]:
         conn.execute(

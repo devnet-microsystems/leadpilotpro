@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import pytest
 import os
 import json
@@ -15,7 +16,7 @@ def db_path(tmp_path):
     db_file = tmp_path / "test_p5_2e.sqlite3"
     
     # Init basic tables (simulating LeadPilot 1.0)
-    conn = sqlite3.connect(str(db_file))
+    conn = db_connector.get_connection(str(db_file))
     # the LeadStore will init some
     conn.close()
     
@@ -39,19 +40,19 @@ def db_path(tmp_path):
 
 
 def insert_product(db_path, name, summary="{}"):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     cur = conn.execute("INSERT INTO products (name, slug, status, raw_summary, created_at_utc, updated_at_utc) VALUES (?, ?, 'READY', ?, '2026-09-19', '2026-09-19')", (name, name.lower().replace(" ", "-"), summary))
     conn.commit()
     return cur.lastrowid
 
 def insert_research_campaign(db_path, name, product_id=None):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     cur = conn.execute("INSERT INTO research_campaigns (name, product_id, created_at_utc) VALUES (?, ?, '2026-09-19')", (name, product_id))
     conn.commit()
     return cur.lastrowid
 
 def insert_outreach_campaign(db_path, name):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     cur = conn.execute("INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, 'Template', '2026-09-19')", (name,))
     conn.commit()
     return cur.lastrowid
@@ -75,7 +76,7 @@ def test_legacy_regression(db_path):
     store.save_lead(lead)
     
     # Approve prospect manually
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.execute("UPDATE prospects SET status = 'approved', campaign_id = 1 WHERE business_email = 'test@legacy.com'")
     conn.commit()
     
@@ -128,7 +129,7 @@ def test_product_driven_eligibility(db_path, monkeypatch):
     )
     store.save_lead(lead2, research_campaign_id=rc_id)
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     
     # Ensure they both still have P3 qualification_status = QUALIFIED
     p1 = conn.execute("SELECT qualification_status FROM prospects WHERE business_email='good@good.com'").fetchone()
@@ -176,7 +177,7 @@ def test_missing_evidence_returns_review_required(db_path, monkeypatch):
     )
     store.save_lead(lead1, research_campaign_id=rc_id)
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     fit = conn.execute("SELECT fit_status FROM prospect_product_fit").fetchone()
     # It must enforce REVIEW_REQUIRED if no evidence
     assert fit[0] == 'REVIEW_REQUIRED'
@@ -212,7 +213,7 @@ def test_multi_product_no_collision(db_path, monkeypatch):
     # Save for RC B (same lead, different RC/Product)
     store.save_lead(lead1, research_campaign_id=rc_b)
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     fits = conn.execute("SELECT product_id, fit_status FROM prospect_product_fit ORDER BY product_id").fetchall()
     
     assert len(fits) == 2

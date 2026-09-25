@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import pytest
 from pathlib import Path
 from schema_bootstrap import ensure_all_schema
@@ -40,7 +41,7 @@ def assert_outbound_jobs_schema_is_correct(conn: sqlite3.Connection):
 def test_clean_bootstrap_produces_correct_schema(tmp_path):
     db_path = tmp_path / "test_clean.sqlite3"
     ensure_all_schema(str(db_path))
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     assert_outbound_jobs_schema_is_correct(conn)
     conn.close()
 
@@ -51,7 +52,7 @@ def test_legacy_upgrade_produces_correct_schema(tmp_path):
     base.connection.close()
     
     # At this point outbound_jobs should not exist
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     with pytest.raises(sqlite3.OperationalError):
         conn.execute("SELECT 1 FROM outbound_jobs").fetchone()
     conn.close()
@@ -60,6 +61,6 @@ def test_legacy_upgrade_produces_correct_schema(tmp_path):
     p6_1_migrate(str(db_path))
     
     # Verify it matches
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     assert_outbound_jobs_schema_is_correct(conn)
     conn.close()

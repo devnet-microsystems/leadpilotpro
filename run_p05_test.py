@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import subprocess
 import os
 import sys
@@ -10,7 +11,7 @@ if os.path.exists("outreach_queue_test.sqlite3"):
 os.system("cp outreach_queue.sqlite3 outreach_queue_test.sqlite3")
 
 def get_row_count(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     c = conn.execute("SELECT count(*) FROM prospects").fetchone()[0]
     conn.close()
     return c
@@ -20,7 +21,7 @@ prod_count_before = get_row_count("outreach_queue.sqlite3")
 from osint_engine.crawler import CompanyCrawler
 crawler = CompanyCrawler()
 
-conn = sqlite3.connect("outreach_queue.sqlite3")
+conn = db_connector.get_connection("outreach_queue.sqlite3")
 cursor = conn.cursor()
 cursor.execute("SELECT business_email FROM prospects")
 all_before_emails = [r[0] for r in cursor.fetchall()]
@@ -31,7 +32,7 @@ for e in all_before_emails:
     t, _ = crawler._evaluate_email(e)
     before_counts[t] = before_counts.get(t, 0) + 1
 
-conn_test = sqlite3.connect("outreach_queue_test.sqlite3")
+conn_test = db_connector.get_connection("outreach_queue_test.sqlite3")
 conn_test.execute("DELETE FROM prospects")
 conn_test.execute("DELETE FROM prospect_sources")
 conn_test.commit()
@@ -44,7 +45,7 @@ subprocess.run([
     "--queries", "CTO SaaS Zurich"
 ], check=True)
 
-conn_test = sqlite3.connect("outreach_queue_test.sqlite3")
+conn_test = db_connector.get_connection("outreach_queue_test.sqlite3")
 cursor_test = conn_test.cursor()
 
 after_total = cursor_test.execute("SELECT count(*) FROM prospects").fetchone()[0]

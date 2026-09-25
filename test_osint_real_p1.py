@@ -3,6 +3,7 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 import sqlite3
+import db_connector
 import tempfile
 import logging
 from pathlib import Path
@@ -80,7 +81,7 @@ class TestRealOsintP1(unittest.TestCase):
             except SystemExit:
                 pass
             
-        conn = sqlite3.connect(self.temp_db_path)
+        conn = db_connector.get_connection(self.temp_db_path)
         count = conn.execute("SELECT count(*) FROM prospects").fetchone()[0]
         self.assertGreaterEqual(count, 150, "Should reach MAX_TOTAL_LEADS (150)")
         self.assertLessEqual(count, 170, "Should stop after reaching MAX_TOTAL_LEADS without overshooting more than one batch")
@@ -91,7 +92,7 @@ class TestRealOsintP1(unittest.TestCase):
 
     @patch('public_osint_market_research.QueryStrategyEngine')
     def test_f_campaign_context(self, mock_engine):
-        conn = sqlite3.connect(self.temp_db_path)
+        conn = db_connector.get_connection(self.temp_db_path)
         conn.execute("INSERT INTO ideal_customer_profiles (id, roles, industries, locations) VALUES (1, '[\"CTO\"]', '[\"Fintech\"]', '[\"Spain\"]')")
         conn.execute("INSERT INTO research_campaigns (id, icp_id, offer_id) VALUES (999, 1, 1)")
         conn.commit()
@@ -124,7 +125,7 @@ class TestRealOsintP1(unittest.TestCase):
     def test_integration_and_provenance(self, mock_ai, mock_score, mock_crawl, mock_search, mock_pw):
         from osint_engine.models import ProviderResult, ProviderState, UnifiedSearchResult, DiscoveredLead
         
-        conn = sqlite3.connect(self.temp_db_path)
+        conn = db_connector.get_connection(self.temp_db_path)
         conn.execute("INSERT INTO ideal_customer_profiles (id, roles, industries, locations) VALUES (1, '[\"CTO\"]', '[\"Fintech\"]', '[\"Spain\"]')")
         conn.execute("INSERT INTO research_campaigns (id, icp_id, offer_id) VALUES (10, 1, 1)")
         conn.execute("INSERT INTO research_campaigns (id, icp_id, offer_id) VALUES (20, 1, 2)")
@@ -173,7 +174,7 @@ class TestRealOsintP1(unittest.TestCase):
             except SystemExit:
                 pass
             
-        conn = sqlite3.connect(self.temp_db_path)
+        conn = db_connector.get_connection(self.temp_db_path)
         conn.row_factory = sqlite3.Row
         prospects = conn.execute("SELECT * FROM prospects").fetchall()
         print([dict(p) for p in prospects])

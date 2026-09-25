@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import db_connector
 import time
 from typing import Optional
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ def create_campaign_from_product(db_path: str, product_id: int) -> Optional[int]
     
     Returns the newly created campaign_id, or None if the product doesn't have a valid profile.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()

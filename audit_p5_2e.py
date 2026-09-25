@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import json
 import time
 from product_intelligence.campaign_builder import create_campaign_from_product
@@ -7,7 +8,7 @@ from public_osint_market_research import LeadStore
 from osint_engine.models import DiscoveredLead
 
 def setup_db(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     # Ensure fresh test products
     profile_a = {
         "product_name": "AI CRM",
@@ -79,7 +80,7 @@ def main():
     )
     runner.save_lead(lead_legacy, query_run_id="test1", research_campaign_id=None)
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     p_legacy = conn.execute("SELECT * FROM prospects WHERE business_email=?", (f"ceo_{ts}@legacy.com",)).fetchone()
     print(f"  - Qualification: {p_legacy['qualification_status']} (Expected: QUALIFIED)")

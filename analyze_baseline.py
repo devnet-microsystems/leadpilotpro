@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 from pathlib import Path
 
 DB_PATH = Path("outreach_queue_baseline_v3.sqlite3")
@@ -8,7 +9,7 @@ def main():
         print(f"Error: {DB_PATH} not found.")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 

@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 
 prod_count_before = 131
 prod_count_after = 131
@@ -38,7 +39,7 @@ print("Change in system: -19")
 print("Change in invalid: 0")
 print("Change in personal_email_provider: 0")
 
-conn_test = sqlite3.connect("outreach_queue_test.sqlite3")
+conn_test = db_connector.get_connection("outreach_queue_test.sqlite3")
 cursor_test = conn_test.cursor()
 
 print("\n--- SAMPLE REAL LEADS (KEEPER) ---")

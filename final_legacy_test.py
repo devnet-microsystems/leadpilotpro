@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import time
 import json
 import uuid
@@ -11,7 +12,7 @@ TEST_EMAIL = f"antoniomichelotti+legacytest_{uuid.uuid4().hex[:8]}@devnet-micros
 
 def inject_session():
     token = str(uuid.uuid4())
-    conn = sqlite3.connect("outreach_queue.sqlite3")
+    conn = db_connector.get_connection("outreach_queue.sqlite3")
     expires = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     conn.execute("INSERT INTO sessions (token, user_id, expires_at_utc) VALUES (?, 1, ?)", (token, expires))
     conn.commit()
@@ -80,7 +81,7 @@ req(f"{BASE_URL}/api/send", method="POST", data={"campaign": legacy_camp["name"]
 # Attendi che il background task finisca e aggiorni il DB
 for i in range(25):
     time.sleep(2)
-    conn = sqlite3.connect("outreach_queue.sqlite3")
+    conn = db_connector.get_connection("outreach_queue.sqlite3")
     conn.row_factory = sqlite3.Row
     p_status = conn.execute("SELECT status FROM prospects WHERE id=?", (pend_id,)).fetchone()
     if p_status and p_status["status"] == "sent":
@@ -90,7 +91,7 @@ for i in range(25):
         break
     conn.close()
 
-conn = sqlite3.connect("outreach_queue.sqlite3")
+conn = db_connector.get_connection("outreach_queue.sqlite3")
 conn.row_factory = sqlite3.Row
 final_p = conn.execute("SELECT status FROM prospects WHERE id=?", (pend_id,)).fetchone()
 

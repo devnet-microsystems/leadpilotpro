@@ -1,7 +1,8 @@
 import sqlite3
+import db_connector
 
 def migrate():
-    conn = sqlite3.connect('outreach_queue.sqlite3')
+    conn = db_connector.get_connection('outreach_queue.sqlite3')
     cur = conn.cursor()
     columns = [col[1] for col in cur.execute("PRAGMA table_info(prospects)").fetchall()]
     

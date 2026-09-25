@@ -1,10 +1,11 @@
 import sqlite3
+import db_connector
 import re
 from playwright.sync_api import sync_playwright
 from osint_engine.quality import LeadScorer
 
 def main():
-    conn = sqlite3.connect('outreach_queue.sqlite3')
+    conn = db_connector.get_connection('outreach_queue.sqlite3')
     cursor = conn.cursor()
     
     cursor.execute("""

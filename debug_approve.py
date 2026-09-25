@@ -5,9 +5,10 @@ import uuid
 BASE_URL = "http://127.0.0.1:8001"
 
 import sqlite3
+import db_connector
 from datetime import datetime, timedelta, timezone
 
-conn = sqlite3.connect("outreach_queue.sqlite3")
+conn = db_connector.get_connection("outreach_queue.sqlite3")
 conn.execute("UPDATE prospects SET status='pending_review' WHERE id=164")
 conn.commit()
 

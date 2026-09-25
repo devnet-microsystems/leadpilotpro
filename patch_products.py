@@ -21,7 +21,8 @@ def api_create_product(req: ProductCreateRequest, user: dict = Depends(get_curre
 @app.get("/api/products")
 def api_list_products(user: dict = Depends(get_current_user)):
     import sqlite3
-    conn = sqlite3.connect(DB_PATH)
+import db_connector
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM products ORDER BY updated_at_utc DESC").fetchall()
     conn.close()

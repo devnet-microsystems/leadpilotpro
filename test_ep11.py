@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import urllib.request
 import json
 import time
@@ -12,7 +13,7 @@ DB_PATH = "outreach_queue.sqlite3"
 
 def inject_session():
     token = str(uuid.uuid4())
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     expires = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     conn.execute("INSERT INTO sessions (token, user_id, expires_at_utc) VALUES (?, 1, ?)", (token, expires))
     conn.commit()
@@ -86,7 +87,7 @@ def run_test():
     
     # 8/9/10. Score >= 40, AI Qualification, Pending Review
     print(f"[{t}] Checking pending prospects...")
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     prospects = conn.execute("SELECT * FROM prospects WHERE research_campaign_id=? AND status='pending_review'", (rc_id,)).fetchall()
     

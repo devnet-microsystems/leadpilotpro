@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import pytest
 from fastapi.testclient import TestClient
 from web_server import app
@@ -10,7 +11,7 @@ def test_legacy_invariant_delta(tmp_path):
     from schema_bootstrap import ensure_all_schema
     ensure_all_schema(db_path)
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     
     # Pre-populate some legacy data to prove we measure delta
     conn.execute("INSERT INTO scheduled_jobs (id, campaign_id, daily_limit, scheduled_at_utc) VALUES (1, 999, 100, 'now')")

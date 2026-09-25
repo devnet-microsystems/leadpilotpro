@@ -8,6 +8,7 @@ campaigns/templates system.
 Idempotent: safe to run multiple times.
 """
 import sqlite3
+import db_connector
 import logging
 from pathlib import Path
 
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def migrate(db_path: str):
     logger.info(f"Running P5.3A migration on {db_path}...")
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     
     # 1. product_sales_strategies
     conn.execute("""

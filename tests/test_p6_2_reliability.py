@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import pytest
 from pathlib import Path
 from schema_bootstrap import ensure_all_schema
@@ -9,7 +10,7 @@ from outbound_worker import OutboundWorker
 def test_db(tmp_path):
     db_path = tmp_path / "test.sqlite3"
     ensure_all_schema(str(db_path))
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     conn.execute("INSERT INTO prospects (id, company_name, business_email, target_url, qualification_status, source_file, imported_at_utc, status) VALUES (1, 'Test', 'test@example.com', 'http://test.com', 'QUALIFIED', 'test.csv', '2023-01-01T00:00:00Z', 'approved')")
     conn.execute("INSERT INTO prospects (id, company_name, business_email, target_url, qualification_status, source_file, imported_at_utc, status) VALUES (2, 'DNS', 'dns-fail@example.com', 'http://dns.com', 'QUALIFIED', 'test.csv', '2023-01-01T00:00:00Z', 'approved')")
     conn.execute("INSERT INTO prospects (id, company_name, business_email, target_url, qualification_status, source_file, imported_at_utc, status) VALUES (3, 'Rate', 'rate-limit@example.com', 'http://rate.com', 'QUALIFIED', 'test.csv', '2023-01-01T00:00:00Z', 'approved')")

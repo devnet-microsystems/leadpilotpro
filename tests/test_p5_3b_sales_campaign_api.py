@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 import sqlite3
+import db_connector
 import json
 
 from web_server import app, DB_PATH, get_current_user
@@ -15,7 +16,7 @@ def test_db(fresh_db):
     return fresh_db
 
 def setup_mock_data(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     
     # 1. Product
     conn.execute("INSERT INTO products (id, name, slug, status, raw_summary, created_at_utc, updated_at_utc) VALUES (10, 'Test CRM', 'test-crm', 'READY', '{\"pricing_information\": {\"status\":\"UNKNOWN\"}}', 'now', 'now')")
@@ -55,7 +56,7 @@ def test_get_research_campaigns_filter(test_db):
 
 def test_get_contexts(test_db):
     setup_mock_data(test_db)
-    conn = sqlite3.connect(test_db)
+    conn = db_connector.get_connection(test_db)
     conn.execute("INSERT INTO campaign_queries (campaign_id, family, query, target_key, is_enabled) VALUES (30, 'DISCOVERY', 'query1', 'CEO|SaaS|Italy', 1)")
     conn.execute("INSERT INTO campaign_queries (campaign_id, family, query, target_key, is_enabled) VALUES (30, 'DISCOVERY', 'query2', 'CTO|Fintech|Spain', 1)")
     conn.commit()

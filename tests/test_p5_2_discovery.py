@@ -16,6 +16,7 @@ Assertion history:
 import os
 import json
 import sqlite3
+import db_connector
 import pytest
 from product_intelligence.campaign_builder import create_campaign_from_product
 from osint_engine.generator import QueryGenerator
@@ -34,7 +35,7 @@ def test_db(tmp_path):
     import migration_p5_2e
     migration_p5_2e.migrate(str(db_path))
 
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
 
     # Initialize necessary tables using IF NOT EXISTS to avoid conflict with ensure_schema.
     conn.executescript("""
@@ -112,7 +113,7 @@ def test_campaign_creation_from_product(test_db):
     campaign_id = create_campaign_from_product(test_db, product_id)
     assert campaign_id is not None
 
-    conn = sqlite3.connect(test_db)
+    conn = db_connector.get_connection(test_db)
     conn.row_factory = sqlite3.Row
 
     camp = conn.execute("SELECT * FROM research_campaigns WHERE id=?", (campaign_id,)).fetchone()

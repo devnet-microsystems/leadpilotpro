@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import sqlite3
+import db_connector
 import subprocess
 import csv
 import hashlib
@@ -12,6 +13,7 @@ import secrets
 import time
 from datetime import datetime, timezone
 import sqlite3
+import db_connector
 import subprocess
 import csv
 import json
@@ -428,7 +430,7 @@ class UpdateCompanyRequest(BaseModel):
 
 @app.post("/api/prospects/update_company")
 def update_company(req: UpdateCompanyRequest, user: dict = Depends(get_current_user)):
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     try:
         conn.execute("UPDATE prospects SET company_name=? WHERE id=?", (req.company_name, req.id))
         conn.commit()
@@ -462,7 +464,7 @@ def update_campaign(req: UpdateCampaignRequest, user: dict = Depends(get_current
 def get_archive(date_from: str = None, date_to: str = None, user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return []
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         query = """
@@ -983,7 +985,7 @@ def api_quick_search_save(req: QuickSearchSaveRequest, user: dict = Depends(get_
 def get_query_history(user: dict = Depends(get_current_user)):
     if not DB_PATH.exists():
         return []
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute("SELECT * FROM search_history ORDER BY executed_at_utc DESC LIMIT 100").fetchall()
@@ -1931,9 +1933,10 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
          
     import sqlite3
+    import db_connector
     from product_intelligence.campaign_builder import create_campaign_from_product
     
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = db_connector.get_connection(str(DB_PATH))
     product = conn.execute("SELECT status FROM products WHERE id = ?", (product_id,)).fetchone()
     if not product or product[0] != "READY":
         conn.close()
@@ -1992,7 +1995,8 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         write_log(f"OSINT Discovery completed with code {returncode}.")
         
         import sqlite3
-        conn2 = sqlite3.connect(db_path_str)
+        import db_connector
+        conn2 = db_connector.get_connection(db_path_str)
         
         if returncode != 0:
             conn2.execute("UPDATE research_campaigns SET status = 'FAILED' WHERE id = ?", (camp_id,))
@@ -2035,7 +2039,8 @@ def api_create_product(req: ProductCreateRequest, user: dict = Depends(get_curre
 @app.get("/api/products")
 def api_list_products(user: dict = Depends(get_current_user)):
     import sqlite3
-    conn = sqlite3.connect(DB_PATH)
+    import db_connector
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM products ORDER BY updated_at_utc DESC").fetchall()
     conn.close()

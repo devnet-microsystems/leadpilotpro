@@ -5,6 +5,7 @@ Refactored for Multi-Engine Search and strict crawler budgeting.
 
 import os
 import sqlite3
+import db_connector
 import logging
 import argparse
 import itertools
@@ -27,7 +28,7 @@ APP_NAME = "LeadPilotProOSINT"
 
 class LeadStore:
     def __init__(self, database_path: Path):
-        self.connection = sqlite3.connect(database_path)
+        self.connection = db_connector.get_connection(database_path)
         self.connection.execute("PRAGMA foreign_keys = ON;")
         self._init_tables()
         
@@ -484,7 +485,7 @@ def main():
     
     conn = None
     try:
-        conn = sqlite3.connect(database_path)
+        conn = db_connector.get_connection(database_path)
         conn.row_factory = sqlite3.Row
         if args.queries:
             raw_queries = args.queries

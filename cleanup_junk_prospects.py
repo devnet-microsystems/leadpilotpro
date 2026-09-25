@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import db_connector
 import sys
 from collections import Counter
 from pathlib import Path
@@ -43,7 +44,7 @@ def main() -> None:
         print(f"Database non trovato: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
 
     where = "status != 'rejected'"

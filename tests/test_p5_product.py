@@ -12,6 +12,7 @@ import io
 import json
 import os
 import sqlite3
+import db_connector
 import sys
 import tempfile
 from typing import Optional
@@ -419,7 +420,7 @@ def test_regression_p4_prospects_untouched():
     if not os.path.exists(db_path):
         pytest.skip("Production DB not found — skipping regression guard.")
 
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     # Check P4 tables still intact
     for table in ["prospects", "prospect_sources", "campaigns", "email_archive"]:
         row = conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()

@@ -1,6 +1,7 @@
 import unittest
 import requests
 import sqlite3
+import db_connector
 import time
 import subprocess
 import os
@@ -13,7 +14,7 @@ DB_PATH = Path("outreach_queue.sqlite3").resolve()
 class TestP2E2E(unittest.TestCase):
     def setUp(self):
         # We assume the web server is running on 8000 and using outreach_queue.sqlite3
-        self.conn = sqlite3.connect(DB_PATH, isolation_level=None)
+        self.conn = db_connector.get_connection(DB_PATH, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.session = requests.Session()
         resp = self.session.post(f"{BASE_URL}/api/login", json={"username": "admin", "password": "admin"})

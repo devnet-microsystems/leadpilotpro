@@ -14,6 +14,7 @@ Non modifica mai dati esistenti: solo CREATE ... IF NOT EXISTS e ADD COLUMN manc
 from __future__ import annotations
 
 import sqlite3
+import db_connector
 from pathlib import Path
 
 EXTRA_DDL = """
@@ -164,7 +165,7 @@ def ensure_all_schema(db_path) -> None:
 
     pi_store.ensure_schema(str(db_path))  # products, product_sources
 
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     try:
         conn.executescript(EXTRA_DDL)
         _ensure_columns(conn, "prospects", _PROSPECT_COLUMNS)

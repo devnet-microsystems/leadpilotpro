@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import urllib.request
 import json
 import time
@@ -14,7 +15,7 @@ DB_PATH = os.environ.get("LEADPILOT_DB_PATH", "outreach_queue.sqlite3")
 
 def inject_session():
     token = str(uuid.uuid4())
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     expires = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     conn.execute("INSERT INTO sessions (token, user_id, expires_at_utc) VALUES (?, 1, ?)", (token, expires))
     conn.commit()
@@ -80,7 +81,7 @@ def run_test():
         research_res["Query Studio"] = "PASS"
         
         # 4. Launch OSINT engine
-        conn = sqlite3.connect(DB_PATH); conn.execute("DELETE FROM prospects WHERE business_email IN ('contact@saasiest.com', 'info@zsah.net')"); conn.commit(); conn.close(); print(f"Running OSINT engine for Campaign {rc_id}..."); 
+        conn = db_connector.get_connection(DB_PATH); conn.execute("DELETE FROM prospects WHERE business_email IN ('contact@saasiest.com', 'info@zsah.net')"); conn.commit(); conn.close(); print(f"Running OSINT engine for Campaign {rc_id}..."); 
         proc = subprocess.run([".venv/bin/python", "public_osint_market_research.py", "--campaign-id", str(rc_id), "--results-per-query", "2", "--max-queries", "2"], capture_output=True, text=True)
         log = proc.stdout + proc.stderr
         print("Log:", log)
@@ -95,7 +96,7 @@ def run_test():
              research_res["Crawler"] = "PASS"
              
         # Check real prospect discovery
-        conn = sqlite3.connect(DB_PATH)
+        conn = db_connector.get_connection(DB_PATH)
         conn.row_factory = sqlite3.Row
         prospects = conn.execute("SELECT * FROM prospects WHERE research_campaign_id=? ORDER BY id DESC", (rc_id,)).fetchall()
         
@@ -151,7 +152,7 @@ def run_test():
         if len(tpl_list) > 0: legacy_res["Templates loaded"] = "PASS"
         
         # Test approval workflow using the first available pending prospect
-        conn = sqlite3.connect(DB_PATH)
+        conn = db_connector.get_connection(DB_PATH)
         conn.row_factory = sqlite3.Row
         pend_prospects = conn.execute("SELECT id FROM prospects WHERE status='pending_review' ORDER BY id DESC LIMIT 1").fetchall()
         
