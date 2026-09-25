@@ -233,7 +233,10 @@ function renderFindCustomersPipeline(product, status, evidence) {
                     ${pendingEvidence.slice(0, 12).map(e => `
                         <div class="fc-evidence-row">
                             <div>
-                                <strong>${orchEscape(e.company_name)}</strong>
+                                <div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap;">
+                                    <strong>${orchEscape(e.company_name)}</strong>
+                                    <span class="fc-score">${Number(e.fit_score || 0)}/100 fit</span>
+                                </div>
                                 <p>${orchEscape(e.reason || 'No reason recorded.')}</p>
                                 ${e.target_url ? `<a href="${orchEscape(e.target_url)}" target="_blank" rel="noopener">Open source →</a>` : ''}
                             </div>
