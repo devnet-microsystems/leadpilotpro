@@ -1139,8 +1139,10 @@ def api_manual_add(req: ManualAddRequest, user: dict = Depends(get_current_user)
     db = OutreachDatabase(DB_PATH)
     email = normalize_email(req.email)
     
-    if not email or "@" not in email:
-        return {"success": False, "error": "Indirizzo email non valido."}
+    from outreach_sender import is_allowed_business_role_email
+
+    if not is_allowed_business_role_email(email):
+        return {"success": False, "error": "Inserisci un indirizzo email aziendale valido (non Gmail/Hotmail/Yahoo o altri provider personali)."}
         
     if db.is_suppressed(email):
         return {"success": False, "error": "Email presente nella blocklist (soppressa)."}
