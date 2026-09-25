@@ -131,7 +131,14 @@ def login(req: LoginRequest, response: Response):
     db.connection.execute("INSERT INTO sessions (token, user_id, expires_at_utc) VALUES (?, ?, ?)", (token, user["id"], expires_iso))
     db.connection.commit()
     
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax", max_age=7*24*3600)
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=7*24*3600,
+    )
     return {"success": True}
 
 @app.post("/api/logout")
@@ -2384,6 +2391,7 @@ def generate_sales_strategy(req: StrategyGenerateRequest, user: dict = Depends(g
     strat["product_id"] = req.product_id
     strat["research_campaign_id"] = req.research_campaign_id
     sid = upsert_strategy(str(DB_PATH), strat)
+    strat["strategy_id"] = sid
     
     return {"success": True, "strategy_id": sid, "strategy": strat}
 
@@ -2429,6 +2437,8 @@ def lookup_product_campaign(
 
 @app.post("/api/product_campaigns/generate")
 def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends(get_current_user)):
+    if req.sequence_length not in (3, 4, 5):
+        raise HTTPException(status_code=400, detail="sequence_length must be 3, 4, or 5")
     db = OutreachDatabase(DB_PATH)
     
     # Validations
@@ -2442,8 +2452,11 @@ def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends
         
     product, product_profile = load_product_profile(str(DB_PATH), req.product_id)
     
-    # Save or reuse campaign container. Non-DRAFT campaigns are immutable from generation.
-    cid = upsert_product_campaign(str(DB_PATH), req.dict())
+    # Persist the strategy identity on the campaign container so approval/export
+    # always has a verifiable strategy relationship.
+    campaign_payload = req.dict()
+    campaign_payload["strategy_id"] = strat["id"]
+    cid = upsert_product_campaign(str(DB_PATH), campaign_payload)
     existing_campaign = get_product_campaign(str(DB_PATH), cid)
     if existing_campaign and existing_campaign.get("status") != "DRAFT":
         return {
