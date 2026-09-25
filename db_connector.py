@@ -210,13 +210,21 @@ class PGCursor:
 
 
     def fetchone(self):
+        if self._pending_returning_row is not None:
+            row = self._pending_returning_row
+            self._pending_returning_row = None
+            return PGRow(row)
         row = self.cur.fetchone()
         if row:
             return PGRow(row)
         return None
         
     def fetchall(self):
-        rows = self.cur.fetchall()
+        rows = []
+        if self._pending_returning_row is not None:
+            rows.append(self._pending_returning_row)
+            self._pending_returning_row = None
+        rows.extend(self.cur.fetchall())
         return [PGRow(r) for r in rows]
         
     def close(self):
