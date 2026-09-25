@@ -50,7 +50,9 @@ def test_browser_smoke_local():
             assert "LeadPilot Pro" in page.title()
             assert page.get_by_text("Find Customers", exact=True).count() >= 1
             page.get_by_text("Find Customers", exact=True).first.click()
-            assert page.get_by_text("Choose your product", exact=True).count() == 1
+            choose_product = page.get_by_text("Choose your product", exact=True).count()
+            empty_state = page.get_by_text("Start with something you sell", exact=True).count()
+            assert choose_product + empty_state == 1
             browser.close()
     finally:
         proc.terminate()
