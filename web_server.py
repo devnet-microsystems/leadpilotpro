@@ -77,7 +77,21 @@ def login(req: LoginRequest, response: Response):
     
     password_hash = hashlib.pbkdf2_hmac('sha256', req.password.encode('utf-8'), user["salt"], 100000)
     if password_hash != user["password_hash"]:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        # Render/staging bootstrap: an explicitly configured admin password may
+        # recover an already-initialized database. The environment variable is
+        # checked only for the admin account and, on successful authentication,
+        # is persisted as the normal DB password hash.
+        bootstrap_password = os.environ.get("LEADPILOT_ADMIN_PASSWORD", "").strip()
+        if req.username == "admin" and bootstrap_password and secrets.compare_digest(req.password, bootstrap_password):
+            new_salt = os.urandom(16)
+            new_hash = hashlib.pbkdf2_hmac("sha256", bootstrap_password.encode("utf-8"), new_salt, 100000)
+            db.connection.execute(
+                "UPDATE users SET password_hash = ?, salt = ? WHERE id = ?",
+                (new_hash, new_salt, user["id"]),
+            )
+            db.connection.commit()
+        else:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc).timestamp() + (7 * 24 * 3600)
