@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -6,7 +7,7 @@ DB_PATH = Path("outreach_queue.sqlite3")
 
 def run_migration():
     print(f"Migrating {DB_PATH} to LeadPilot 2.0 Schema...")
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     
     # 1. New Tables
     conn.executescript("""

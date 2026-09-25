@@ -55,7 +55,7 @@ def test_browser_smoke_local():
             assert isinstance(products, list)
             page.get_by_text("Find Customers", exact=True).first.click()
             page.wait_for_function(
-                "() => { const el = document.getElementById(" + JSON.stringify("orchestrator-root") + "); return !!el && el.textContent.trim().length > 0; }",
+                "() => { const el = document.getElementById('orchestrator-root'); return !!el && el.textContent.trim().length > 0; }",
                 timeout=5000,
             )
             choose_product = page.get_by_text("Choose your product", exact=True).count()

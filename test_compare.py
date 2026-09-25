@@ -1,8 +1,9 @@
 import sqlite3
+import db_connector
 import subprocess
 
 def analyze_db(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     cursor = conn.cursor()
     
     # Get total emails
@@ -39,7 +40,7 @@ print("Running BEFORE analysis...")
 before_total, before_counts = analyze_db("outreach_queue.sqlite3.backup")
 
 print("Clearing DB for AFTER run...")
-conn = sqlite3.connect("outreach_queue.sqlite3")
+conn = db_connector.get_connection("outreach_queue.sqlite3")
 conn.execute("DELETE FROM prospects")
 conn.execute("DELETE FROM prospect_sources")
 conn.commit()
@@ -49,7 +50,7 @@ print("Running pipeline...")
 subprocess.run([".venv/bin/python3", "public_osint_market_research.py", "--queries", "CTO SaaS Zurich"], check=True)
 
 print("Running AFTER analysis...")
-conn = sqlite3.connect("outreach_queue.sqlite3")
+conn = db_connector.get_connection("outreach_queue.sqlite3")
 cursor = conn.cursor()
 after_total = cursor.execute("SELECT count(*) FROM prospects").fetchone()[0]
 counts = {"PERSONAL": 0, "ROLE_BASED": 0, "SYSTEM": 0}

@@ -1,8 +1,9 @@
 import sqlite3
+import db_connector
 import sys
 
 def check_legacy_invariant():
-    conn = sqlite3.connect('/Users/tonic/Lavori/LeadPilotPro/leadpilot.db')
+    conn = db_connector.get_connection('/Users/tonic/Lavori/LeadPilotPro/leadpilot.db')
     try:
         send_jobs = conn.execute("SELECT COUNT(*) FROM send_jobs").fetchone()[0]
     except:

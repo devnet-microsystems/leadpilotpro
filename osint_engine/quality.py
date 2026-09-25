@@ -2,6 +2,7 @@ import re
 from typing import Dict, Any, Tuple
 from .models import QuerySpec
 import sqlite3
+import db_connector
 import json
 import urllib.request
 from typing import Dict, Any, Tuple
@@ -94,7 +95,7 @@ class AIExtractor:
             return ""
             
         try:
-            conn = sqlite3.connect(db_path)
+            conn = db_connector.get_connection(db_path)
             conn.row_factory = sqlite3.Row
             
             # Fetch AI settings

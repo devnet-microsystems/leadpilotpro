@@ -1,8 +1,9 @@
 import sqlite3
+import db_connector
 
 def compare_db(db1_path, db2_path, tables):
-    conn1 = sqlite3.connect(db1_path)
-    conn2 = sqlite3.connect(db2_path)
+    conn1 = db_connector.get_connection(db1_path)
+    conn2 = db_connector.get_connection(db2_path)
     
     conn1.row_factory = sqlite3.Row
     conn2.row_factory = sqlite3.Row

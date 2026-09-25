@@ -5,6 +5,7 @@ Tutti usano DB temporanei e SMTP disabilitato (vedi conftest.py).
 """
 import json
 import sqlite3
+import db_connector
 from pathlib import Path
 
 import pytest
@@ -193,7 +194,7 @@ CTX = {"product_id": 10, "research_campaign_id": 30, "market": "Italy", "languag
 
 
 def _seed(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.execute("INSERT INTO products (id, name, slug, status, raw_summary, created_at_utc, updated_at_utc) "
                  "VALUES (10, 'CRM', 'crm', 'READY', '{\"name\": \"CRM\"}', 'now', 'now')")
     conn.execute("INSERT INTO ideal_customer_profiles (id, name, roles, industries, company_sizes, countries, languages, created_at_utc) "
@@ -267,7 +268,7 @@ def test_full_flow_generate_edit_approve_export(fresh_db, monkeypatch):
     body = exp.json()
     assert len(body["created"]) == 4 and body["existing"] == [] and body["warnings"]  # 'role' senza dati -> avviso
 
-    conn = sqlite3.connect(fresh_db)
+    conn = db_connector.get_connection(fresh_db)
     assert conn.execute("SELECT COUNT(*) FROM templates").fetchone()[0] == 4
     assert conn.execute("SELECT COUNT(*) FROM campaigns WHERE name LIKE 'PC%'").fetchone()[0] == 4
     # ogni template esportato e' accettato dal sender vero
@@ -317,7 +318,7 @@ def test_schema_bootstrap_is_idempotent_and_keeps_data(fresh_db):
     _seed(fresh_db)
     ensure_all_schema(fresh_db)
     ensure_all_schema(fresh_db)
-    conn = sqlite3.connect(fresh_db)
+    conn = db_connector.get_connection(fresh_db)
     assert conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
 
@@ -331,7 +332,7 @@ def test_schema_bootstrap_is_idempotent_and_keeps_data(fresh_db):
 
 def test_run_send_task_does_not_crash_and_logs_stay_with_the_db(fresh_db, tmp_path):
     import web_server
-    conn = sqlite3.connect(fresh_db)
+    conn = db_connector.get_connection(fresh_db)
     conn.execute("INSERT INTO templates (name, content, created_at_utc) VALUES ('t.txt', 'Subject: hi\n\nHello {company_name}', 'now')")
     conn.execute("INSERT INTO campaigns (name, template, created_at_utc) VALUES ('regression_send', 't.txt', 'now')")
     conn.commit()

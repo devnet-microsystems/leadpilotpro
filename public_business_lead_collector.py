@@ -18,6 +18,7 @@ import logging
 import random
 import re
 import sqlite3
+import db_connector
 import sys
 import time
 from dataclasses import dataclass
@@ -107,7 +108,7 @@ class LeadStore:
     """SQLite-backed deduplication and insertion into main prospects table."""
 
     def __init__(self, database_path: Path) -> None:
-        self.connection = sqlite3.connect(database_path)
+        self.connection = db_connector.get_connection(database_path)
 
     def save_if_new(self, lead: PublicBusinessLead) -> bool:
         # Business emails are unique in the prospects table

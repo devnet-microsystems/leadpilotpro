@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import db_connector
 from datetime import datetime, timezone
 from string import Formatter
 from typing import Any, Dict, List
@@ -136,7 +137,7 @@ def export_to_outreach(db_path: str, product_campaign_id: int, add_footer: bool 
             "delay_days": delay,
         })
 
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     try:
         created, existing = [], []
         now = _utc_now()

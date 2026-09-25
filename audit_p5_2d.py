@@ -1,10 +1,11 @@
 import sqlite3
+import db_connector
 import json
 import time
 from product_intelligence.campaign_builder import create_campaign_from_product
 
 def setup_db(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     # Ensure fresh test product
     profile = {
         "product_name": "AI CRM",
@@ -61,7 +62,7 @@ def main():
     print(f"\n[+] CAMPAIGN CREATION")
     print(f"  - Campaign ID: {camp1}")
     
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     
     # Check Templates

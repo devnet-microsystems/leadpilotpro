@@ -7,6 +7,7 @@ idempotent persistence, and E2E logic without actually sending emails.
 """
 import pytest
 import sqlite3
+import db_connector
 import json
 from pathlib import Path
 
@@ -22,7 +23,7 @@ def test_db(tmp_path):
     migration_p5_3a.migrate(str(db_path))
     
     # Needs settings table for provider config
-    conn = sqlite3.connect(str(db_path))
+    conn = db_connector.get_connection(str(db_path))
     conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
     conn.execute("INSERT INTO settings (key, value) VALUES ('ai_api_key', 'test_key')")
     conn.execute("INSERT INTO settings (key, value) VALUES ('ai_base_url', 'http://localhost:1234')")
@@ -53,7 +54,7 @@ def test_store_idempotency(test_db):
     
     assert sid1 == sid2
     
-    conn = sqlite3.connect(test_db)
+    conn = db_connector.get_connection(test_db)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM product_sales_strategies WHERE id=?", (sid1,)).fetchone()
     assert row["core_value_proposition"] == "Better CRM"

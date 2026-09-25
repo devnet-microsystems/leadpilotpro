@@ -7,10 +7,11 @@ as required by the P6.1 Integration Contract.
 """
 
 import sqlite3
+import db_connector
 from pathlib import Path
 
 def migrate(db_path: str):
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     try:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS outbound_jobs (

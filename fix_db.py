@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import sys
 
 DB_PATH = 'outreach_queue.sqlite3'
@@ -22,8 +23,8 @@ def print_counts(cursor, label):
             pass
             
 def main():
-    conn = sqlite3.connect(DB_PATH)
-    backup_conn = sqlite3.connect(BACKUP_PATH)
+    conn = db_connector.get_connection(DB_PATH)
+    backup_conn = db_connector.get_connection(BACKUP_PATH)
     
     cur = conn.cursor()
     b_cur = backup_conn.cursor()

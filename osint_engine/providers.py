@@ -21,7 +21,8 @@ NEGATIVE_SITES = [
 def get_db_setting(key: str, default: str) -> str:
     try:
         import sqlite3
-        conn = sqlite3.connect("outreach_queue.sqlite3")
+        import db_connector
+        conn = db_connector.get_connection("outreach_queue.sqlite3")
         row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         conn.close()
         if row and row[0] is not None:

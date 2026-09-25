@@ -9,6 +9,7 @@ IMPORTANT: Does NOT touch any P1-P4 tables (prospects, campaigns, etc.)
 import json
 import logging
 import sqlite3
+import db_connector
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -51,7 +52,7 @@ def _utc_now() -> str:
 
 def ensure_schema(db_path: str) -> None:
     """Idempotently create P5 tables without touching existing P1-P4 tables."""
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.executescript(DDL)
     conn.commit()
     conn.close()
@@ -72,7 +73,7 @@ def _slugify(name: str) -> str:
 
 def create_product(db_path: str, name: str) -> dict:
     base_slug = _slugify(name)
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
 
     # Ensure slug uniqueness by appending a counter if needed
@@ -96,7 +97,7 @@ def create_product(db_path: str, name: str) -> dict:
 
 
 def get_product(db_path: str, product_id: int) -> Optional[dict]:
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
     conn.close()
@@ -106,7 +107,7 @@ def get_product(db_path: str, product_id: int) -> Optional[dict]:
 
 
 def list_products(db_path: str) -> List[dict]:
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM products ORDER BY created_at_utc DESC").fetchall()
     conn.close()
@@ -114,7 +115,7 @@ def list_products(db_path: str) -> List[dict]:
 
 
 def set_product_status(db_path: str, product_id: int, status: str, error: str = "") -> None:
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.execute(
         "UPDATE products SET status=?, error_message=?, updated_at_utc=? WHERE id=?",
         (status, error or None, _utc_now(), product_id),
@@ -131,7 +132,7 @@ def save_product_analysis(
     model_name: str,
 ) -> None:
     raw = json.dumps(profile, ensure_ascii=False)
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.execute(
         """UPDATE products
            SET status='READY', raw_summary=?, analysis_provider=?,
@@ -149,7 +150,7 @@ def save_product_analysis(
 
 def source_hash_exists(db_path: str, product_id: int, content_hash: str) -> bool:
     """Return True if this exact content has already been stored for this product."""
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     row = conn.execute(
         "SELECT 1 FROM product_sources WHERE product_id=? AND content_hash=?",
         (product_id, content_hash),
@@ -169,7 +170,7 @@ def add_source(
     language: Optional[str] = None,
 ) -> dict:
     now = _utc_now()
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     cur = conn.execute(
         """INSERT INTO product_sources
@@ -192,7 +193,7 @@ def add_source(
 
 
 def list_sources(db_path: str, product_id: int) -> List[dict]:
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT * FROM product_sources WHERE product_id=? ORDER BY id",
@@ -210,7 +211,7 @@ def list_sources(db_path: str, product_id: int) -> List[dict]:
 
 def get_sources_with_text(db_path: str, product_id: int) -> List[dict]:
     """Return full source objects including extracted_text, used by the agent."""
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT * FROM product_sources WHERE product_id=? ORDER BY id",

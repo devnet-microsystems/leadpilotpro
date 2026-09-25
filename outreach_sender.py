@@ -27,6 +27,7 @@ import re
 import smtplib
 import socket
 import sqlite3
+import db_connector
 import sys
 import time
 from dataclasses import dataclass
@@ -82,7 +83,7 @@ class AuditLog:
 class OutreachDatabase:
     def __init__(self, path: Path) -> None:
         self.db_path = path
-        self.connection = sqlite3.connect(path, timeout=10.0, isolation_level=None)
+        self.connection = db_connector.get_connection(path, timeout=10.0, isolation_level=None)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode=WAL;")
         self._create_schema()
@@ -218,6 +219,7 @@ class OutreachDatabase:
         for column, sql_type in (
             ("evidence_reviewed_at", "TEXT"),
             ("evidence_reviewed_by", "TEXT"),
+            ("analysis_version", "TEXT"),
         ):
             try:
                 self.connection.execute(

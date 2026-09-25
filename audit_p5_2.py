@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import json
 import time
 from product_intelligence.campaign_builder import create_campaign_from_product
@@ -15,7 +16,7 @@ def run_audit():
     print("P5.2A — REAL PRODUCT → ICP → MARKET → OSINT AUDIT")
     print("==================================================")
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     
     # 1. Create a comprehensive Product Profile
@@ -97,7 +98,7 @@ def run_audit():
         print("STDERR:", result.stderr)
         
     # 6. Verify Results
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.row_factory = sqlite3.Row
     
     runs = conn.execute("SELECT * FROM query_runs WHERE campaign_id=?", (camp1,)).fetchall()

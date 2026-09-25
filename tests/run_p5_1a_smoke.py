@@ -9,6 +9,7 @@ import json
 import time
 import os
 import sqlite3
+import db_connector
 import sys
 import time
 from datetime import datetime, timezone
@@ -276,7 +277,7 @@ print(f"  → error_message: {fp.get('error_message', '')[:80]}")
 
 # ── Step 8: Security audit ─────────────────────────────────────────────────
 print("\n[8] Security Audit — API key not in output")
-conn = sqlite3.connect(DB_PATH)
+conn = db_connector.get_connection(DB_PATH)
 db_key = conn.execute("SELECT value FROM settings WHERE key='ai_api_key'").fetchone()
 conn.close()
 key_val = db_key[0] if db_key else ""

@@ -5,6 +5,7 @@ Execution engine for P6.
 Enforces EXPORT != SEND, idempotency, and error handling.
 """
 import sqlite3
+import db_connector
 import time
 from typing import Optional, List, Dict, Any
 from provider_adapter import EmailProvider, TransportState
@@ -16,7 +17,7 @@ class OutboundWorker:
         self.paused = False
 
     def get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = db_connector.get_connection(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 

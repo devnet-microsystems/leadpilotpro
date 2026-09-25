@@ -1,10 +1,11 @@
 import sqlite3
+import db_connector
 import os
 import sys
 
 def migrate(db_path="outreach_queue.sqlite3"):
     print(f"Running migration on {db_path}...")
-    conn = sqlite3.connect(db_path)
+    conn = db_connector.get_connection(db_path)
     
     # 1. Add product_id to research_campaigns
     try:

@@ -1,9 +1,10 @@
 import sqlite3
+import db_connector
 from datetime import datetime, timezone
 import os
 
 db_path = "outreach_queue.sqlite3"
-conn = sqlite3.connect(db_path)
+conn = db_connector.get_connection(db_path)
 
 # Cleanup previous tests if any
 conn.execute("DELETE FROM research_campaigns WHERE name = 'Test London Berlin MVP'")

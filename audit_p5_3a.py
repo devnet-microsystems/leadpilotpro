@@ -1,4 +1,5 @@
 import sqlite3
+import db_connector
 import json
 import logging
 from typing import Dict, Any
@@ -18,7 +19,7 @@ def add_result(check, result, evidence):
     results.append(f"| {check} | {result} | {evidence} |")
 
 def count_table(table: str) -> int:
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     try:
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     finally:
@@ -43,7 +44,7 @@ def run_real_ai_e2e():
     
     # Real E2E execution
     # Ensure there's a dummy product
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connector.get_connection(DB_PATH)
     conn.execute("INSERT OR IGNORE INTO products (id, name, created_at_utc, updated_at_utc) VALUES (999, 'Test Product', 'now', 'now')")
     conn.execute("INSERT OR IGNORE INTO research_campaigns (id, name, product_id, created_at_utc, updated_at_utc) VALUES (999, 'Test RC', 999, 'now', 'now')")
     conn.commit()
@@ -133,7 +134,7 @@ def test_idempotency():
         cid3 = upsert_product_campaign(DB_PATH, camp_payload)
         
         # D. Porta a APPROVED
-        conn = sqlite3.connect(DB_PATH)
+        conn = db_connector.get_connection(DB_PATH)
         conn.execute("UPDATE product_campaigns SET status='APPROVED' WHERE id=?", (cid1,))
         conn.commit()
         conn.close()

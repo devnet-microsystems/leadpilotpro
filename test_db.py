@@ -1,8 +1,9 @@
 import sqlite3
+import db_connector
 import sys
 
 def main():
-    conn = sqlite3.connect('outreach_queue.sqlite3')
+    conn = db_connector.get_connection('outreach_queue.sqlite3')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
