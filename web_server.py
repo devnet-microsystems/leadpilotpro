@@ -1596,7 +1596,12 @@ async def scheduler_loop():
 def orchestrator_pipeline_status(product_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     
-    q_discovered = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_sources ps ON p.id = ps.prospect_id JOIN query_runs qr ON ps.query_run_id = qr.run_id JOIN campaign_queries cq ON qr.target_key = cq.target_key JOIN research_campaigns rc ON cq.campaign_id = rc.id WHERE rc.product_id = ?"
+    q_discovered = """
+        SELECT COUNT(DISTINCT p.id)
+        FROM prospects p
+        JOIN research_campaigns rc ON p.research_campaign_id = rc.id
+        WHERE rc.product_id = ?
+    """
     discovered = db.connection.execute(q_discovered, (product_id,)).fetchone()[0] or 0
     
     q_qualified = "SELECT count(distinct p.id) FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
@@ -1651,7 +1656,17 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
 @app.get("/api/orchestrator/evidence")
 def orchestrator_evidence(product_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
-    q = "SELECT p.id, p.company_name, p.target_url, pf.fit_status, pf.reason, pf.matched_signals, pf.evidence_reviewed_at FROM prospects p JOIN prospect_product_fit pf ON p.id = pf.prospect_id WHERE pf.product_id = ? AND pf.fit_status = 'FIT'"
+    q = """
+        SELECT p.id, p.company_name, p.target_url,
+               pf.fit_status, pf.fit_score, pf.reason,
+               pf.matched_signals, pf.missing_signals,
+               pf.negative_signals, pf.evidence_source_ids,
+               pf.evidence_reviewed_at
+        FROM prospects p
+        JOIN prospect_product_fit pf ON p.id = pf.prospect_id
+        WHERE pf.product_id = ? AND pf.fit_status = 'FIT'
+        ORDER BY pf.fit_score DESC, p.id DESC
+    """
     rows = db.connection.execute(q, (product_id,)).fetchall()
     return [dict(r) for r in rows]
 
@@ -1748,11 +1763,8 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         
         write_log("OSINT Discovery completed successfully. Product-fit evaluation was performed by the discovery engine.")
         
-        # Auto-review only high-confidence product fits; final outreach approval remains manual.
-        conn2.execute(
-            "UPDATE prospect_product_fit SET evidence_reviewed_at=?, evidence_reviewed_by=? WHERE product_id=? AND fit_status='FIT' AND fit_score >= 75",
-            (datetime.now(timezone.utc).isoformat(), "auto_pilot", prod_id)
-        )
+        # Evidence review remains a human gate. Auto-Pilot may discover and score fits,
+        # but it must never mark evidence as reviewed on behalf of the user.
         conn2.execute("UPDATE research_campaigns SET status = 'COMPLETED' WHERE id = ?", (camp_id,))
         conn2.commit()
         conn2.close()
