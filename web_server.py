@@ -1727,6 +1727,13 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     product_id = payload.get("product_id")
     if not product_id:
          raise HTTPException(status_code=400, detail="Missing product_id")
+
+    try:
+        max_leads = int(payload.get("max_leads", 150))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="max_leads must be an integer")
+    if max_leads < 10 or max_leads > 5000:
+        raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
          
     import sqlite3
     from product_intelligence.campaign_builder import create_campaign_from_product
@@ -1751,7 +1758,7 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     conn.commit()
     conn.close()
     
-    def run_auto_pilot(db_path_str: str, prod_id: int, camp_id: int):
+    def run_auto_pilot(db_path_str: str, prod_id: int, camp_id: int, max_leads: int):
         import subprocess
         from pathlib import Path
         from datetime import datetime, timezone
@@ -1808,7 +1815,7 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         conn2.close()
         write_log("Auto-Pilot sequence complete.")
             
-    background_tasks.add_task(run_auto_pilot, str(DB_PATH), product_id, rc_id)
+    background_tasks.add_task(run_auto_pilot, str(DB_PATH), product_id, rc_id, max_leads)
     return {"success": True, "message": "Auto-Pilot started!", "campaign_id": rc_id}
 
 
@@ -2334,7 +2341,55 @@ def export_product_campaign_to_outreach(id: int, payload: dict = None, user: dic
             warnings.append(f"Step {index} skipped because subject or body is empty.")
             continue
 
-        content = f"Subject: {subject}\n\n{body}"
+        import re
+        from string import Formatter
+
+        # P5.4 legacy bridge:
+        # P5.3 uses {{double_brace}} placeholders while the legacy sender
+        # supports only its explicit single-brace template contract.
+        legacy_placeholder_map = {
+            "company_name": "{company_name}",
+            "why_matched": "{reason_for_contact}",
+            "matched_signal": "{reason_for_contact}",
+        }
+        combined = f"Subject: {subject}\n\n{body}"
+        p53_placeholders = set(re.findall(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", combined))
+        unsupported = sorted(p for p in p53_placeholders if p not in legacy_placeholder_map)
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Sequence step {index} uses placeholders not supported by the legacy sender: "
+                    + ", ".join(f"{{{{{p}}}}}" for p in unsupported)
+                ),
+            )
+
+        for name, legacy_field in legacy_placeholder_map.items():
+            combined = re.sub(
+                rf"\{{\{{\s*{re.escape(name)}\s*\}}\}}",
+                legacy_field,
+                combined,
+            )
+
+        fields = {field_name for _, field_name, _, _ in Formatter().parse(combined) if field_name}
+        allowed_legacy_fields = {
+            "company_name",
+            "domain",
+            "target_url",
+            "reason_for_contact",
+            "company",
+            "website",
+            "reply_to",
+            "unsubscribe_address",
+        }
+        unknown_fields = fields - allowed_legacy_fields
+        if unknown_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Legacy template contains unsupported fields: {sorted(unknown_fields)}",
+            )
+
+        content = combined
         if add_footer:
             content += "\n\n---\nIf you prefer not to receive further messages, reply and let us know."
 
