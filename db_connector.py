@@ -155,7 +155,7 @@ class PGCursor:
             match = re.search(r'(?i)INSERT\s+INTO\s+([a-zA-Z0-9_]+)', sql)
             if match:
                 table_name = match.group(1).lower()
-                if table_name not in ('suppression_list', 'settings', 'sqlite_master'):
+                if table_name not in ('suppression_list', 'settings', 'sqlite_master', 'templates', 'sessions', 'sqlite_sequence'):
                     sql += " RETURNING id"
                     
         return sql
