@@ -1206,7 +1206,7 @@ def api_import_csv(req: ImportCsvRequest, user: dict = Depends(get_current_user)
         if name:
             company = f"{company} ({name})"
             
-        if not email or "@" not in email:
+        if not is_allowed_business_role_email(email):
             skipped += 1
             continue
             
