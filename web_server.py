@@ -2507,7 +2507,7 @@ def update_product_campaign_messages(id: int, req: UpdateMessagesRequest, user: 
         # We could also validate placeholders here, but EmailSequenceAgent checks generation.
         # Strict user constraints say "placeholders validi". Let's do a basic check.
         import re
-        placeholders = re.findall(r'\{\{([^}]+)\}\}', msg.body)
+        placeholders = re.findall(r'\{\{([^}]+)\}\}', msg.subject + " " + msg.body)
         allowed = {"first_name", "last_name", "company_name", "industry", "role", "matched_signal", "why_matched", "market"}
         for p in placeholders:
             if p not in allowed:
