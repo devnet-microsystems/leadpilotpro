@@ -194,6 +194,38 @@ class OutreachDatabase:
                 FOREIGN KEY(campaign_id) REFERENCES campaigns(id)
             )
         """)
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_product_fit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                fit_status TEXT NOT NULL,
+                fit_score INTEGER DEFAULT 0,
+                reason TEXT,
+                matched_signals TEXT,
+                missing_signals TEXT,
+                negative_signals TEXT,
+                evidence_source_ids TEXT,
+                provider TEXT,
+                model TEXT,
+                evidence_reviewed_at TEXT,
+                evidence_reviewed_by TEXT,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                UNIQUE(prospect_id, product_id)
+            )
+        """)
+        for column, sql_type in (
+            ("evidence_reviewed_at", "TEXT"),
+            ("evidence_reviewed_by", "TEXT"),
+        ):
+            try:
+                self.connection.execute(
+                    f"ALTER TABLE prospect_product_fit ADD COLUMN {column} {sql_type}"
+                )
+            except sqlite3.OperationalError:
+                pass
+
         self.connection.commit()
         
         # Check if admin user exists, if not create default
