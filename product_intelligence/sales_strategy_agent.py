@@ -127,12 +127,12 @@ class SalesStrategyAgent:
             strategy = json.loads(raw)
         except json.JSONDecodeError as e:
             match = re.search(r"\{.*\}", raw, re.DOTALL)
-            if match:
-                try:
-                    strategy = json.loads(match.group(0))
-                except Exception:
-                    pass
-            return {"status": "FAILED", "error": f"Invalid JSON output: {e}"}
+            if not match:
+                return {"status": "FAILED", "error": f"Invalid JSON output: {e}"}
+            try:
+                strategy = json.loads(match.group(0))
+            except Exception:
+                return {"status": "FAILED", "error": f"Invalid JSON output: {e}"}
 
         if not isinstance(strategy, dict):
             return {"status": "FAILED", "error": "AI output must be a JSON object."}
