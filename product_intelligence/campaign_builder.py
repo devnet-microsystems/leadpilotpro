@@ -99,27 +99,27 @@ def create_campaign_from_product(db_path: str, product_id: int) -> Optional[int]
     else:
         # Create ICP
         icp_name = f"[Auto] ICP: Product {product_id}"
-        conn.execute(
+        icp_cur = conn.execute(
             "INSERT INTO ideal_customer_profiles (name, roles, industries, company_sizes, countries, languages, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (icp_name, json.dumps(roles), json.dumps(industries) if industries else '[]', "Any", json.dumps(normalized_markets), json.dumps(normalized_languages), now)
         )
-        icp_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        icp_id = icp_cur.lastrowid
         
         # Create SalesOffer
         price = profile.get("pricing_information", {}).get("summary", "")
         offer_name = f"[Auto] Offer: Product {product_id}"
-        conn.execute(
+        offer_cur = conn.execute(
             "INSERT INTO sales_offers (name, description, price, target_buyer_roles, created_at_utc) VALUES (?, ?, ?, ?, ?)",
             (offer_name, profile.get("description", "Auto-generated product offer"), price, json.dumps(roles), now)
         )
-        offer_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        offer_id = offer_cur.lastrowid
         
         # Create ResearchCampaign
-        conn.execute(
+        campaign_cur = conn.execute(
             "INSERT INTO research_campaigns (name, product_id, offer_id, icp_id, status, created_at_utc) VALUES (?, ?, ?, ?, 'DRAFT', ?)",
             (camp_name, product_id, offer_id, icp_id, now)
         )
-        campaign_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        campaign_id = campaign_cur.lastrowid
         
     # Generate Query Templates based on Keywords and Markets
     keywords = profile.get("keywords", [])
