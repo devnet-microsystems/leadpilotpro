@@ -26,13 +26,25 @@ from outreach_sender import OutreachDatabase, AuditLog, normalize_email, utc_now
 app = FastAPI(title="LeadPilot Pro")
 
 ROOT = Path(__file__).parent
-DB_PATH = ROOT / "outreach_queue.sqlite3"
-AUDIT_PATH = ROOT / "outreach_audit.jsonl"
+DB_PATH = Path(os.environ.get("LEADPILOT_DB_PATH", str(ROOT / "outreach_queue.sqlite3"))).expanduser()
+AUDIT_PATH = Path(os.environ.get("LEADPILOT_AUDIT_PATH", str(DB_PATH.with_name("outreach_audit.jsonl"))).expanduser())
 STATIC_DIR = ROOT / "static"
 STATIC_DIR.mkdir(exist_ok=True)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/health")
+def health():
+    """Unauthenticated liveness/readiness endpoint for Render and monitoring."""
+    try:
+        db = OutreachDatabase(DB_PATH)
+        row = db.connection.execute("SELECT 1 AS ok").fetchone()
+        return {"status": "ok", "database": bool(row and row["ok"] == 1)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"database unavailable: {type(exc).__name__}")
 
 def auth_disabled() -> bool:
     return os.environ.get("LEADPILOT_DISABLE_AUTH", "").strip() == "1"
