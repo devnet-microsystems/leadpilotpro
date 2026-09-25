@@ -143,15 +143,21 @@ def export_to_outreach(db_path: str, product_campaign_id: int, add_footer: bool 
         now = _utc_now()
         for p in prepared:
             t_exists = conn.execute("SELECT 1 FROM templates WHERE name=?", (p["template_name"],)).fetchone()
+            c_exists = conn.execute("SELECT 1 FROM campaigns WHERE name=?", (p["campaign_name"],)).fetchone()
+            created_any = False
+
             if not t_exists:
                 conn.execute("INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
                              (p["template_name"], p["content"], now))
-            c_exists = conn.execute("SELECT 1 FROM campaigns WHERE name=?", (p["campaign_name"],)).fetchone()
+                created_any = True
+
             if not c_exists:
                 conn.execute("INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, ?, ?)",
                              (p["campaign_name"], p["template_name"], now))
-            (existing if (t_exists and c_exists) else created).append(
-                {"campaign": p["campaign_name"], "template": p["template_name"], "delay_days": p["delay_days"]})
+                created_any = True
+
+            item = {"campaign": p["campaign_name"], "template": p["template_name"], "delay_days": p["delay_days"]}
+            (created if created_any else existing).append(item)
         conn.commit()
     finally:
         conn.close()
