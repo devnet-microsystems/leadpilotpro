@@ -49,10 +49,18 @@ def test_browser_smoke_local():
             page.goto(base_url, wait_until="networkidle")
             assert "LeadPilot Pro" in page.title()
             assert page.get_by_text("Find Customers", exact=True).count() >= 1
+            api = requests.get(f"{base_url}/api/products", timeout=5)
+            assert api.status_code == 200, api.text
+            products = api.json()
+            assert isinstance(products, list)
             page.get_by_text("Find Customers", exact=True).first.click()
+            page.wait_for_function(
+                "() => { const el = document.getElementById(" + JSON.stringify("orchestrator-root") + "); return !!el && el.textContent.trim().length > 0; }",
+                timeout=5000,
+            )
             choose_product = page.get_by_text("Choose your product", exact=True).count()
             empty_state = page.get_by_text("Start with something you sell", exact=True).count()
-            assert choose_product + empty_state == 1
+            assert choose_product + empty_state == 1, page.locator("#orchestrator-root").inner_text()
             browser.close()
     finally:
         proc.terminate()
