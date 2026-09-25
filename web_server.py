@@ -2032,6 +2032,39 @@ def get_sales_strategy(product_id: int, research_campaign_id: int, market: str, 
         raise HTTPException(status_code=404, detail="Strategy not found")
     return strat
 
+@app.get("/api/product_campaign_lookup")
+def lookup_product_campaign(
+    product_id: int,
+    research_campaign_id: int,
+    market: str,
+    language: str,
+    target_segment: str,
+    buyer_role: str,
+    user: dict = Depends(get_current_user)
+):
+    """Return the existing product campaign for an exact sales context, if any."""
+    db = OutreachDatabase(DB_PATH)
+    row = db.connection.execute("""
+        SELECT id
+        FROM product_campaigns
+        WHERE product_id = ?
+          AND research_campaign_id = ?
+          AND market = ?
+          AND language = ?
+          AND target_segment = ?
+          AND buyer_role = ?
+        LIMIT 1
+    """, (
+        product_id,
+        research_campaign_id,
+        market,
+        language,
+        target_segment,
+        buyer_role
+    )).fetchone()
+    return {"campaign_id": row["id"] if row else None}
+
+
 @app.post("/api/product_campaigns/generate")
 def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
