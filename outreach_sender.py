@@ -378,7 +378,11 @@ class OutreachDatabase:
         cursor = self.connection.execute(
             """
             UPDATE prospects
-            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?, campaign_id = COALESCE(?, campaign_id)
+            SET status = 'approved',
+                approved_at_utc = ?,
+                reason_for_contact = ?,
+                campaign_id = COALESCE(?, campaign_id),
+                qualification_status = 'QUALIFIED'
             WHERE id = ? AND status = 'pending_review'
             """,
             (utc_now(), reason.strip(), campaign_id, prospect_id),
@@ -392,7 +396,11 @@ class OutreachDatabase:
         cursor = self.connection.execute(
             """
             UPDATE prospects
-            SET status = 'approved', approved_at_utc = ?, reason_for_contact = ?, campaign_id = COALESCE(?, campaign_id)
+            SET status = 'approved',
+                approved_at_utc = ?,
+                reason_for_contact = ?,
+                campaign_id = COALESCE(?, campaign_id),
+                qualification_status = 'QUALIFIED'
             WHERE campaign_id = ? AND status = 'pending_review'
             """,
             (utc_now(), reason.strip(), camp_id),
@@ -429,7 +437,10 @@ class OutreachDatabase:
         cosi' non arrivano mai a SMTP anche se approvati in passato."""
         rows = self._approved_rows(campaign, limit)
         for _ in range(5):
-            junk_ids = [r["id"] for r in rows if junk_reason(r["business_email"])]
+            junk_ids = [
+                r["id"] for r in rows
+                if junk_reason(r["business_email"]) or not is_allowed_business_role_email(r["business_email"])
+            ]
             if not junk_ids:
                 return rows
             marks = ",".join("?" for _ in junk_ids)
