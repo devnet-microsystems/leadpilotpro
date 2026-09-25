@@ -1148,6 +1148,12 @@ class SettingsRequest(BaseModel):
     ai_api_key: str | None = ""
     ai_base_url: str | None = "https://api.openai.com/v1"
     ai_model: str | None = "gpt-4o"
+    # OSINT search provider settings persisted by the Settings UI.
+    ddg_enabled: str | None = None
+    searxng_enabled: str | None = None
+    searxng_url: str | None = None
+    brave_enabled: str | None = None
+    brave_api_key: str | None = None
     lusha_api_key: str | None = ""
     imap_host: str | None = ""
     imap_port: str | None = "993"
@@ -1175,11 +1181,18 @@ def update_settings(req: SettingsRequest, user: dict = Depends(get_current_user)
         ("ai_api_key", req.ai_api_key),
         ("ai_base_url", req.ai_base_url),
         ("ai_model", req.ai_model),
+        ("ddg_enabled", req.ddg_enabled),
+        ("searxng_enabled", req.searxng_enabled),
+        ("searxng_url", req.searxng_url),
+        ("brave_enabled", req.brave_enabled),
+        ("brave_api_key", req.brave_api_key),
         ("lusha_api_key", req.lusha_api_key),
         ("imap_host", req.imap_host),
         ("imap_port", req.imap_port)
     ]
     for key, val in settings:
+        if val is None:
+            continue
         db.connection.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, val))
     db.connection.commit()
     return {"success": True}

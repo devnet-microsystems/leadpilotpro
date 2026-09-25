@@ -1212,10 +1212,10 @@ async function loadSettings() {
         document.getElementById('lusha-api-key').value = data.lusha_api_key || '';
     }
     
-    if (document.getElementById('ddg-enabled')) document.getElementById('ddg-enabled').checked = (data.ddg_enabled !== 'false');
-    if (document.getElementById('searxng-enabled')) document.getElementById('searxng-enabled').checked = (data.searxng_enabled !== 'false');
+    if (document.getElementById('ddg-enabled')) document.getElementById('ddg-enabled').checked = (data.ddg_enabled === 'true');
+    if (document.getElementById('searxng-enabled')) document.getElementById('searxng-enabled').checked = (data.searxng_enabled === 'true');
     if (document.getElementById('searxng-url')) document.getElementById('searxng-url').value = data.searxng_url || 'http://localhost:8080';
-    if (document.getElementById('brave-enabled')) document.getElementById('brave-enabled').checked = (data.brave_enabled !== 'false');
+    if (document.getElementById('brave-enabled')) document.getElementById('brave-enabled').checked = (data.brave_enabled === 'true');
     if (document.getElementById('brave-api-key')) document.getElementById('brave-api-key').value = data.brave_api_key || '';
     
     // Enable AI generation UI if API key is set

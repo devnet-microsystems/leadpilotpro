@@ -52,7 +52,8 @@ class DuckDuckGoProvider(UnifiedSearchProvider):
         if db_val:
             self.enabled = db_val.lower() == "true"
         else:
-            self.enabled = os.getenv("DDG_ENABLED", "true").lower() == "true"
+            # Provider activation must be explicit in Settings or env.
+            self.enabled = os.getenv("DDG_ENABLED", "false").lower() == "true"
         
     def adapt_query(self, spec: QuerySpec) -> str:
         q = spec.text
@@ -215,7 +216,8 @@ class SearXNGProvider(UnifiedSearchProvider):
         if db_val:
             self.enabled = db_val.lower() == "true"
         else:
-            self.enabled = os.getenv("SEARXNG_ENABLED", "true").lower() == "true"
+            # Provider activation must be explicit in Settings or env.
+            self.enabled = os.getenv("SEARXNG_ENABLED", "false").lower() == "true"
         
     def adapt_query(self, spec: QuerySpec) -> str:
         q = spec.text
