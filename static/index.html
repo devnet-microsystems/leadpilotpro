@@ -161,6 +161,7 @@
                                 <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source Type</label>
                                 <select id="add-product-type" onchange="toggleProductSourceInput()" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: var(--text);">
                                     <option value="URL" style="background:#1a1a1a;">Website URL</option>
+                                    <option value="PDF" style="background:#1a1a1a;">PDF Document</option>
                                     <option value="TEXT" style="background:#1a1a1a;">Pasted Text</option>
                                 </select>
                             </div>
@@ -168,6 +169,11 @@
                                 <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source URL</label>
                                 <input type="text" id="add-product-url" placeholder="e.g. https://devnet-microsystems.com/audit/" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text);">
                             </div>
+                        </div>
+                        <div id="add-product-pdf-container" style="display:none; width: 100%;">
+                            <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">PDF Document</label>
+                            <input type="file" id="add-product-pdf" accept=".pdf,application/pdf" style="width:100%; padding:0.75rem; border-radius:4px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color:var(--text);">
+                            <small style="display:block; margin-top:0.4rem; color:var(--text-muted);">PDF only, max 20 MB. You can add more PDFs to the same product later.</small>
                         </div>
                         <div id="add-product-text-container" style="display:none; width: 100%;">
                             <label style="display:block; margin-bottom:0.5rem; color:var(--text-muted); font-size: 0.85rem;">Source Text</label>
