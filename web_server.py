@@ -398,7 +398,11 @@ def api_approve_selected(req: ApproveSelectedRequest, user: dict = Depends(get_c
         
     cursor = db.connection.cursor()
     for pid in req.ids:
-        cursor.execute("UPDATE prospects SET status='approved', campaign_id=?, reason_for_contact=? WHERE id=? AND status='pending_review'", (camp_id, req.reason, pid))
+        cursor.execute(
+            "UPDATE prospects SET status='approved', campaign_id=?, reason_for_contact=?, qualification_status='QUALIFIED' "
+            "WHERE id=? AND status='pending_review'",
+            (camp_id, req.reason, pid)
+        )
         if cursor.rowcount > 0:
             count += 1
             audit.write("prospect_approved", {"prospect_id": pid, "campaign_id": camp_id, "reason": req.reason})
