@@ -2275,6 +2275,29 @@ class SequenceMessageUpdate(BaseModel):
 class UpdateMessagesRequest(BaseModel):
     messages: List[SequenceMessageUpdate]
 
+
+def load_product_profile(db_path: str, product_id: int):
+    """Load the persisted Product Intelligence JSON profile from the canonical product row."""
+    from product_intelligence.store import get_product
+
+    product = get_product(db_path, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    raw_summary = product.get("raw_summary")
+    if not raw_summary:
+        raise HTTPException(status_code=400, detail="Product Profile not available")
+
+    try:
+        profile = json.loads(raw_summary)
+    except (TypeError, json.JSONDecodeError):
+        raise HTTPException(status_code=500, detail="Stored Product Profile is invalid")
+
+    if not isinstance(profile, dict):
+        raise HTTPException(status_code=500, detail="Stored Product Profile is not an object")
+
+    return product, profile
+
 @app.get("/api/research_campaigns/{id}/logs")
 def api_get_campaign_logs(id: int, user: dict = Depends(get_current_user)):
     from pathlib import Path
@@ -2341,17 +2364,13 @@ def generate_sales_strategy(req: StrategyGenerateRequest, user: dict = Depends(g
     if camp["product_id"] != req.product_id:
         raise HTTPException(status_code=400, detail="Research Campaign does not belong to the given Product")
         
-    # Get Product profile
-    from product_intelligence.store import ProductIntelligenceStore
-    pi_store = ProductIntelligenceStore()
-    product = pi_store.get_product(str(DB_PATH), req.product_id)
-    if not product or not product.get("profile"):
-        raise HTTPException(status_code=400, detail="Product Profile not available")
-        
+    # Get persisted Product profile
+    product, product_profile = load_product_profile(str(DB_PATH), req.product_id)
+
     # Generate Strategy
     agent = SalesStrategyAgent(str(DB_PATH))
     strat = agent.generate(
-        product_profile=product["profile"],
+        product_profile=product_profile,
         market=req.market,
         language=req.language,
         target_segment=req.target_segment,
@@ -2421,16 +2440,14 @@ def generate_product_campaign(req: CampaignGenerateRequest, user: dict = Depends
     if not strat:
         raise HTTPException(status_code=400, detail="Sales Strategy not found. Please generate it first.")
         
-    from product_intelligence.store import ProductIntelligenceStore
-    pi_store = ProductIntelligenceStore()
-    product = pi_store.get_product(str(DB_PATH), req.product_id)
+    product, product_profile = load_product_profile(str(DB_PATH), req.product_id)
     
     # Save DRAFT campaign
     cid = upsert_product_campaign(str(DB_PATH), req.dict())
     
     # Generate Sequence
     agent = EmailSequenceAgent(str(DB_PATH))
-    seq = agent.generate(strat, product["profile"], req.sequence_length)
+    seq = agent.generate(strat, product_profile, req.sequence_length)
     
     if seq.get("status") == "FAILED":
         # We allow re-generation on FAILED, so we don't abort, just bubble error
