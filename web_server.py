@@ -2380,4 +2380,8 @@ def export_product_campaign_to_outreach(id: int, payload: dict = None, user: dic
 
 @app.on_event("startup")
 async def startup_event():
+    # Ensure all schemas used by the unified app exist on a fresh Render volume.
+    # This is idempotent and keeps legacy/P5 databases compatible.
+    from product_intelligence.store import ensure_schema as ensure_product_schema
+    ensure_product_schema(str(DB_PATH))
     asyncio.create_task(scheduler_loop())
