@@ -34,8 +34,14 @@ STATIC_DIR.mkdir(exist_ok=True)
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+def auth_disabled() -> bool:
+    return os.environ.get("LEADPILOT_DISABLE_AUTH", "").strip() == "1"
+
 @app.get("/")
 def read_root(request: Request):
+    if auth_disabled():
+        return FileResponse(STATIC_DIR / "index.html")
+
     token = request.cookies.get("session_token")
     if token and DB_PATH.exists():
         db = OutreachDatabase(DB_PATH)
@@ -48,6 +54,9 @@ def read_root(request: Request):
     return FileResponse(STATIC_DIR / "login.html")
 
 def get_current_user(request: Request):
+    if auth_disabled():
+        return {"id": 1, "username": "admin"}
+
     token = request.cookies.get("session_token")
     if not token or not DB_PATH.exists():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -66,6 +75,9 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/login")
 def login(req: LoginRequest, response: Response):
+    if auth_disabled():
+        return {"success": True}
+
     if not DB_PATH.exists():
         db = OutreachDatabase(DB_PATH) # Will auto-create admin if empty
     else:
