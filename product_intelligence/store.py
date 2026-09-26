@@ -114,6 +114,60 @@ def list_products(db_path: str) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def delete_product(db_path: str, product_id: int) -> dict:
+    """Delete a product and its product-owned configuration/research artifacts.
+
+    Prospect rows are preserved; their research_campaign_id is cleared so
+    global lead history is not destroyed by product cleanup.
+    """
+    conn = db_connector.get_connection(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        product = conn.execute("SELECT id, name FROM products WHERE id=?", (product_id,)).fetchone()
+        if not product:
+            return {"deleted": False, "product_id": product_id, "reason": "not_found"}
+
+        research_ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM research_campaigns WHERE product_id=?", (product_id,)
+            ).fetchall()
+        ]
+        product_campaign_ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM product_campaigns WHERE product_id=?", (product_id,)
+            ).fetchall()
+        ]
+
+        if research_ids:
+            marks = ",".join("?" * len(research_ids))
+            conn.execute(f"UPDATE prospects SET research_campaign_id=NULL WHERE research_campaign_id IN ({marks})", research_ids)
+            conn.execute("DELETE FROM prospect_product_fit WHERE product_id=?", (product_id,))
+            conn.execute(f"DELETE FROM campaign_queries WHERE campaign_id IN ({marks})", research_ids)
+            conn.execute(f"DELETE FROM query_runs WHERE campaign_id IN ({marks})", research_ids)
+            conn.execute(f"DELETE FROM research_campaigns WHERE id IN ({marks})", research_ids)
+
+        if product_campaign_ids:
+            marks = ",".join("?" * len(product_campaign_ids))
+            conn.execute(f"DELETE FROM email_sequence_messages WHERE product_campaign_id IN ({marks})", product_campaign_ids)
+            conn.execute(f"DELETE FROM product_campaigns WHERE id IN ({marks})", product_campaign_ids)
+
+        conn.execute("DELETE FROM product_sales_strategies WHERE product_id=?", (product_id,))
+        conn.execute("DELETE FROM product_sources WHERE product_id=?", (product_id,))
+        conn.execute("DELETE FROM products WHERE id=?", (product_id,))
+        conn.commit()
+        return {
+            "deleted": True,
+            "product_id": product_id,
+            "name": product["name"],
+            "research_campaigns_deleted": len(research_ids),
+            "product_campaigns_deleted": len(product_campaign_ids),
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 def set_product_status(db_path: str, product_id: int, status: str, error: str = "") -> None:
     conn = db_connector.get_connection(db_path)
     conn.execute(
