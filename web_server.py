@@ -2063,6 +2063,14 @@ def api_list_products(user: dict = Depends(get_current_user)):
     conn.close()
     return [dict(r) for r in rows]
 
+@app.delete("/api/products/{id}")
+def api_delete_product(id: int, user: dict = Depends(get_current_user)):
+    from product_intelligence.store import delete_product
+    result = delete_product(str(DB_PATH), id)
+    if not result.get("deleted"):
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"success": True, **result}
+
 @app.get("/api/products/{id}")
 def api_get_product(id: int, user: dict = Depends(get_current_user)):
     from product_intelligence.store import get_product
