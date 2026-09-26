@@ -496,11 +496,13 @@ input[type="text"]:focus, select:focus {
 }
 .fc-product-grid {
   display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.8rem;
+  position:relative; z-index:20;
 }
 .fc-product-card {
   display:flex; flex-direction:column; gap:.55rem; text-align:left;
   padding:1rem; border:1px solid var(--border); border-radius:10px;
   background:rgba(255,255,255,.025); color:var(--text); min-height:115px;
+  position:relative; z-index:21; pointer-events:auto; cursor:pointer;
 }
 .fc-product-card:hover { border-color:var(--primary); background:rgba(59,130,246,.06); }
 .fc-product-card.is-disabled { opacity:.7; }
