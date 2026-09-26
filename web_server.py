@@ -907,6 +907,9 @@ def _run_manual_search_job(job_id: str, query: str, campaign_id: int | None, pro
 def api_search_providers(user: dict = Depends(get_current_user)):
     from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProvider, BraveProvider
     providers = [DuckDuckGoProvider(), BingProvider(), SearXNGProvider(), BraveProvider()]
+    # Keep the UI consistent with the headless browser fallback used by Auto-Pilot.
+    if not any(p.enabled for p in providers) and os.getenv("LEADPILOT_BROWSER_FALLBACK", "true").lower() == "true":
+        providers[0].enabled = True
     return [{"id": p.name, "name": p.name.replace("Provider", ""), "enabled": bool(p.enabled)} for p in providers]
 
 
@@ -922,7 +925,10 @@ def api_quick_search(req: QuickSearchRequest, background_tasks: BackgroundTasks,
     provider_name = req.provider.strip() if req.provider else None
 
     from osint_engine.providers import DuckDuckGoProvider, BingProvider, SearXNGProvider, BraveProvider
-    providers = {p.name: p for p in [DuckDuckGoProvider(), BingProvider(), SearXNGProvider(), BraveProvider()]}
+    provider_objects = [DuckDuckGoProvider(), BingProvider(), SearXNGProvider(), BraveProvider()]
+    providers = {p.name: p for p in provider_objects}
+    if not any(p.enabled for p in provider_objects) and os.getenv("LEADPILOT_BROWSER_FALLBACK", "true").lower() == "true":
+        providers["DuckDuckGoProvider"].enabled = True
     if provider_name:
         provider = providers.get(provider_name)
         if not provider:
