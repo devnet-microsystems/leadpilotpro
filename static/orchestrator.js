@@ -117,15 +117,12 @@ function renderFindCustomersStart(products) {
             </section>
         </div>`;
 
-    const productGrid = orchEl('fc-product-grid');
-    if (productGrid) {
-        productGrid.addEventListener('click', (event) => {
-            const card = event.target.closest('.fc-product-card[data-product-id]');
-            if (!card || card.disabled) return;
+    document.querySelectorAll('#fc-product-grid .fc-product-card[data-product-id]').forEach((card) => {
+        card.onclick = () => {
             const productId = Number(card.dataset.productId);
             if (productId) loadOrchestratorPipeline(productId);
-        });
-    }
+        };
+    });
 }
 
 async function loadOrchestratorPipeline(productId) {
