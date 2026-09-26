@@ -95,9 +95,9 @@ function renderFindCustomersStart(products) {
                     <button class="btn-secondary" onclick="switchTab('products')">Manage Products</button>
                 </div>
 
-                <div class="fc-product-grid">
+                <div class="fc-product-grid" id="fc-product-grid">
                     ${products.map(p => `
-                        <button class="fc-product-card ${p.status === 'READY' ? '' : 'is-disabled'}" onclick="loadOrchestratorPipeline(${Number(p.id)})">
+                        <button type="button" class="fc-product-card ${p.status === 'READY' ? '' : 'is-disabled'}" data-product-id="${Number(p.id)}" aria-label="${orchEscape((p.status === 'READY' ? 'Use' : 'Open setup for') + ' ' + (p.name || 'product'))}">
                             <div class="fc-product-card-top">
                                 <strong>${orchEscape(p.name)}</strong>
                                 <span class="fc-status ${String(p.status || '').toLowerCase()}">${orchEscape(p.status)}</span>
@@ -116,6 +116,16 @@ function renderFindCustomersStart(products) {
                 <div><strong>What it does not do</strong><span>No email is sent by Find Customers. Sending stays behind the existing approval gate.</span></div>
             </section>
         </div>`;
+
+    const productGrid = orchEl('fc-product-grid');
+    if (productGrid) {
+        productGrid.addEventListener('click', (event) => {
+            const card = event.target.closest('.fc-product-card[data-product-id]');
+            if (!card || card.disabled) return;
+            const productId = Number(card.dataset.productId);
+            if (productId) loadOrchestratorPipeline(productId);
+        });
+    }
 }
 
 async function loadOrchestratorPipeline(productId) {
@@ -550,3 +560,8 @@ async function saveManualSearchResults() {
 window.runManualSearch = runManualSearch;
 window.saveManualSearchResults = saveManualSearchResults;
 window.initManualSearchControls = initManualSearchControls;
+
+
+// Explicit global bindings for reliable DOM integrations.
+window.loadOrchestratorPipeline = loadOrchestratorPipeline;
+window.renderFindCustomersStart = renderFindCustomersStart;
