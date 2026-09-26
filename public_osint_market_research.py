@@ -524,6 +524,16 @@ def main():
     else:
         active_providers = [p for p in providers.values() if p.enabled]
 
+    # Free browser fallback: if no API/local provider is enabled, keep research
+    # usable through the existing headless Chromium + DuckDuckGo provider.
+    # Disable explicitly with LEADPILOT_BROWSER_FALLBACK=false.
+    browser_fallback_enabled = os.getenv("LEADPILOT_BROWSER_FALLBACK", "true").lower() == "true"
+    if not active_providers and browser_fallback_enabled and not selected_provider:
+        fallback = providers["DuckDuckGoProvider"]
+        fallback.enabled = True
+        active_providers = [fallback]
+        logging.warning("No search providers enabled; using headless browser DuckDuckGo fallback.")
+
     active_provider_names = [p.name for p in active_providers]
     logging.info(f"Active providers: {active_provider_names}")
 
