@@ -28,6 +28,7 @@ async function loadProductsList() {
                                     ${p.status === 'DRAFT' ? `<button onclick="analyzeProduct(${p.id})" style="margin-left: 10px; padding: 2px 8px; font-size: 0.8rem; background: var(--primary);">Analyze</button>` : ''}
                                     ${p.status === 'FAILED' ? `<button onclick="analyzeProduct(${p.id})" style="margin-left: 10px; padding: 2px 8px; font-size: 0.8rem; background: var(--error);">Retry</button>` : ''}
                                     <button onclick="openProductSources(${p.id})" style="margin-left:10px; padding:2px 8px; font-size:.8rem; background:transparent; border:1px solid var(--border);">Sources / PDFs</button>
+                                    <button onclick="deleteProduct(${p.id})" style="margin-left:10px; padding:2px 8px; font-size:.8rem; background:transparent; border:1px solid var(--error); color:var(--error);">Delete</button>
                                     ${p.error_message ? `<div style="margin-top:.45rem;color:var(--error);font-size:.78rem;max-width:720px;">Error: ${escapeHtml(p.error_message)}</div>` : ''}
                                 </td>
                             </tr>
@@ -260,4 +261,20 @@ async function openProductSources(productId) {
 
         document.getElementById('fc-source-analyze').onclick = async () => { modal.remove(); await analyzeProduct(productId); };
     } catch (e) { if (modal) modal.remove(); showToast(e.message || 'Could not load product sources', 'error'); }
+}
+
+async function deleteProduct(productId) {
+    try {
+        const productRes = await fetch('/api/products/' + productId);
+        const product = productRes.ok ? await productRes.json() : null;
+        const productName = product && product.name ? product.name : ('Product #' + productId);
+
+        if (!(await showConfirm('Delete product "' + productName + '"? This removes the product, its sources, product campaigns/strategies, research campaigns and query configuration. Existing global prospects are kept.'))) return;
+
+        const res = await fetch('/api/products/' + productId, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Could not delete product');
+        showToast('Product deleted.', 'success');
+        await loadProductsList();
+    } catch (e) { showToast(e.message || 'Could not delete product', 'error'); }
 }
