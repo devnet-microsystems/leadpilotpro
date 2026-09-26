@@ -138,10 +138,11 @@ def delete_product(db_path: str, product_id: int) -> dict:
             ).fetchall()
         ]
 
+        conn.execute("DELETE FROM prospect_product_fit WHERE product_id=?", (product_id,))
+
         if research_ids:
             marks = ",".join("?" * len(research_ids))
             conn.execute(f"UPDATE prospects SET research_campaign_id=NULL WHERE research_campaign_id IN ({marks})", research_ids)
-            conn.execute("DELETE FROM prospect_product_fit WHERE product_id=?", (product_id,))
             conn.execute(f"DELETE FROM campaign_queries WHERE campaign_id IN ({marks})", research_ids)
             conn.execute(f"DELETE FROM query_runs WHERE campaign_id IN ({marks})", research_ids)
             conn.execute(f"DELETE FROM research_campaigns WHERE id IN ({marks})", research_ids)
