@@ -1929,6 +1929,16 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
         raise HTTPException(status_code=400, detail="max_leads must be an integer")
     if max_leads < 10 or max_leads > 5000:
         raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
+
+    selected_providers = payload.get("providers") or []
+    if not isinstance(selected_providers, list):
+        selected_providers = [str(selected_providers)]
+    selected_providers = [str(x).strip() for x in selected_providers if str(x).strip()]
+    ai_enabled = bool(payload.get("ai_enabled", True))
+    target_role = str(payload.get("role") or "").strip()
+    target_industry = str(payload.get("industry") or "").strip()
+    target_location = str(payload.get("location") or "").strip()
+    target_country = str(payload.get("country") or "").strip()
     db = OutreachDatabase(DB_PATH)
     q = "SELECT COUNT(*) FROM prospect_product_fit WHERE product_id = ? AND fit_status = 'FIT'"
     count = db.connection.execute(q, (product_id,)).fetchone()[0]
@@ -1957,14 +1967,134 @@ def orchestrator_review_prospect(id: int, payload: dict, user: dict = Depends(ge
     action = payload.get("action")
     db = OutreachDatabase(DB_PATH)
     if action == "APPROVE":
-        db.connection.execute("UPDATE prospect_product_fit SET evidence_reviewed_at = ? WHERE prospect_id = ?", (datetime.now(timezone.utc).isoformat(), id))
+        now = datetime.now(timezone.utc).isoformat()
+        db.connection.execute(
+            "UPDATE prospect_product_fit SET evidence_reviewed_at = ? WHERE prospect_id = ?",
+            (now, id)
+        )
+        # Human approval is the explicit gate for outreach. Campaign assignment
+        # happens in the next step, so no email is sent and no campaign is guessed here.
+        db.connection.execute(
+            "UPDATE prospects SET status='approved', approved_at_utc=?, qualification_status='QUALIFIED', rejection_reason=NULL WHERE id=? AND qualification_status!='REJECTED'",
+            (now, id)
+        )
     elif action == "REJECT":
         reason = payload.get("reason", "Manual Override")
-        db.connection.execute("UPDATE prospects SET qualification_status = 'REJECTED', rejection_reason = ? WHERE id = ?", (reason, id))
+        db.connection.execute(
+            "UPDATE prospects SET qualification_status = 'REJECTED', rejection_reason = ?, status='rejected' WHERE id = ?",
+            (reason, id)
+        )
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
     db.connection.commit()
     return {"success": True}
+
+
+@app.get("/api/orchestrator/approved_leads")
+def orchestrator_approved_leads(product_id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    q = """
+        SELECT p.id, p.company_name, p.business_email, p.target_url,
+               p.campaign_id, c.name AS campaign_name,
+               p.approved_at_utc, p.relevance_score, p.why_matched,
+               pf.fit_score, pf.fit_status, pf.evidence_reviewed_at
+        FROM prospects p
+        JOIN prospect_product_fit pf ON pf.prospect_id = p.id AND pf.product_id = ?
+        LEFT JOIN campaigns c ON c.id = p.campaign_id
+        WHERE p.status='approved'
+          AND p.qualification_status='QUALIFIED'
+          AND pf.fit_status='FIT'
+          AND pf.evidence_reviewed_at IS NOT NULL
+        ORDER BY p.approved_at_utc DESC, p.id DESC
+    """
+    return [dict(r) for r in db.connection.execute(q, (product_id,)).fetchall()]
+
+
+@app.post("/api/orchestrator/prepare_outreach")
+def orchestrator_prepare_outreach(payload: dict, user: dict = Depends(get_current_user)):
+    product_id = int(payload.get("product_id") or 0)
+    prospect_ids = [int(x) for x in (payload.get("prospect_ids") or [])]
+    campaign_id = payload.get("campaign_id")
+    campaign_name = str(payload.get("campaign_name") or "").strip()
+    if not product_id or not prospect_ids:
+        raise HTTPException(status_code=400, detail="product_id and at least one prospect_id are required")
+
+    db = OutreachDatabase(DB_PATH)
+
+    if campaign_id:
+        camp = db.connection.execute("SELECT id, name FROM campaigns WHERE id=?", (int(campaign_id),)).fetchone()
+        if not camp:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        legacy_campaign_id = int(camp["id"])
+        final_name = camp["name"]
+    else:
+        if not campaign_name:
+            raise HTTPException(status_code=400, detail="Choose an existing campaign or enter a new campaign name")
+        final_name = campaign_name
+        row = db.connection.execute("SELECT id FROM campaigns WHERE name=?", (final_name,)).fetchone()
+        if row:
+            legacy_campaign_id = int(row["id"])
+        else:
+            product_row = db.connection.execute("SELECT name FROM products WHERE id=?", (product_id,)).fetchone()
+            product_name = product_row["name"] if product_row else f"Product {product_id}"
+            template_name = f"leadpilot-auto-{product_id}-{secrets.token_hex(4)}.txt"
+            template_content = (
+                f"Subject: {product_name} — relevant for {{company_name}}\\n\\n"
+                f"Hi {{company_name}},\\n\\n"
+                f"I found your company while researching this market and thought this could be relevant.\\n\\n"
+                f"{{reason_for_contact}}\\n\\n"
+                f"If useful, I can send more information.\\n\\n"
+                f"--\\n{{company}} - {{website}}\\n"
+                f"To stop receiving these emails, reply \\"unsubscribe\\" or write to {{unsubscribe_address}}."
+            )
+            db.connection.execute(
+                "INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
+                (template_name, template_content, utc_now())
+            )
+            cur = db.connection.execute(
+                "INSERT INTO campaigns (name, template, created_at_utc) VALUES (?, ?, ?)",
+                (final_name, template_name, utc_now())
+            )
+            legacy_campaign_id = int(cur.lastrowid)
+
+    marks = ",".join("?" for _ in prospect_ids)
+    rows = db.connection.execute(
+        f"""
+        SELECT p.id, p.business_email, p.status, p.qualification_status,
+               pf.fit_status, pf.fit_score, pf.evidence_reviewed_at
+        FROM prospects p
+        JOIN prospect_product_fit pf ON pf.prospect_id=p.id AND pf.product_id=?
+        WHERE p.id IN ({marks})
+        """,
+        [product_id] + prospect_ids
+    ).fetchall()
+    eligible = [
+        int(row["id"]) for row in rows
+        if row["status"] == "approved"
+        and row["qualification_status"] == "QUALIFIED"
+        and row["fit_status"] == "FIT"
+        and row["fit_score"] >= 60
+        and row["evidence_reviewed_at"]
+    ]
+    if not eligible:
+        raise HTTPException(status_code=400, detail="No reviewed, qualified prospects are ready for outreach")
+
+    placeholders = ",".join("?" for _ in eligible)
+    db.connection.execute(
+        f"""
+        UPDATE prospects
+        SET campaign_id=?, status='approved', qualification_status='QUALIFIED'
+        WHERE id IN ({placeholders})
+        """,
+        [legacy_campaign_id] + eligible
+    )
+    db.connection.commit()
+    return {
+        "success": True,
+        "campaign_id": legacy_campaign_id,
+        "campaign": final_name,
+        "prepared": len(eligible),
+    }
 
 @app.post("/api/orchestrator/auto_pilot")
 def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
@@ -2027,6 +2157,18 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
             "--campaign-id", str(camp_id),
             "--max-leads", str(max_leads)
         ]
+        if selected_providers:
+            cmd.extend(["--providers", ",".join(selected_providers)])
+        if not ai_enabled:
+            cmd.append("--no-ai")
+        if target_role:
+            cmd.extend(["--role", target_role])
+        if target_industry:
+            cmd.extend(["--industry", target_industry])
+        if target_location:
+            cmd.extend(["--location", target_location])
+        if target_country:
+            cmd.extend(["--country", target_country])
         
         write_log("Running OSINT Discovery...")
         
