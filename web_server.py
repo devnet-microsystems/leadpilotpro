@@ -1113,28 +1113,55 @@ def get_send_logs(user: dict = Depends(get_current_user)):
         return {"logs": f.read()}
 
 @app.get("/api/research_logs")
-def get_research_logs(user: dict = Depends(get_current_user)):
-    # Prefer the legacy global research.log when it contains data.
+def get_research_logs(campaign_id: int | None = None, user: dict = Depends(get_current_user)):
+    # When Find Customers supplies a campaign id, always read that campaign's
+    # live log. Do not substitute the legacy global log, which may be stale.
+    if campaign_id is not None:
+        try:
+            db = OutreachDatabase(DB_PATH)
+            row = db.connection.execute(
+                "SELECT id, status FROM research_campaigns WHERE id = ?",
+                (campaign_id,)
+            ).fetchone()
+            if row:
+                log_path = DB_PATH.parent / f"campaign_{campaign_id}_osint.log"
+                if log_path.exists():
+                    content = log_path.read_text()
+                    if len(content) > 30000:
+                        content = content[-30000:]
+                    return {
+                        "campaign_id": campaign_id,
+                        "status": row["status"],
+                        "logs": content,
+                    }
+                return {
+                    "campaign_id": campaign_id,
+                    "status": row["status"],
+                    "logs": f"Campaign {campaign_id} · status: {row['status']}\nWaiting for worker output…",
+                }
+        except Exception as exc:
+            return {"campaign_id": campaign_id, "logs": f"Research log unavailable: {type(exc).__name__}: {exc}"}
+
+    # Legacy Diagnostics behavior when no specific campaign is requested.
     if RESEARCH_LOG_PATH.exists():
         global_text = RESEARCH_LOG_PATH.read_text()
         if global_text.strip():
             return {"logs": global_text}
 
-    # Auto-Pilot writes the authoritative live output to campaign_<id>_osint.log.
-    # Fall back to the newest research campaign so Diagnostics reflects the
-    # same run whose status is shown in Find Customers.
     try:
         db = OutreachDatabase(DB_PATH)
         row = db.connection.execute(
             "SELECT id, status FROM research_campaigns ORDER BY id DESC LIMIT 1"
         ).fetchone()
         if row:
-            campaign_id = row["id"]
-            log_path = DB_PATH.parent / f"campaign_{campaign_id}_osint.log"
+            latest_id = row["id"]
+            log_path = DB_PATH.parent / f"campaign_{latest_id}_osint.log"
             if log_path.exists():
+                content = log_path.read_text()
+                if len(content) > 30000:
+                    content = content[-30000:]
                 return {
-                    "logs": f"Campaign {campaign_id} · status: {row['status']}\n"
-                             + log_path.read_text()
+                    "logs": f"Campaign {latest_id} · status: {row['status']}\n" + content
                 }
     except Exception as exc:
         return {"logs": f"Research log unavailable: {type(exc).__name__}: {exc}"}
