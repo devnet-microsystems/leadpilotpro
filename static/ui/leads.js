@@ -1,7 +1,7 @@
 (function(){
 var LP=window.LP;
 LP.renderLeads=async function(){
-  var root=LP.$("view-leads");LP.page(root,"Pipeline","Leads","Review prospects or inspect company rollups.");
+  var root=LP.$("#view-leads");LP.page(root,"Pipeline","Leads","Review prospects or inspect company rollups.");
   var panel=LP.card([]),tabs=LP.el("div",{className:"tabs"});
   [["pending","Review"],["approved","Approved"],["rejected","Rejected"],["companies","Companies"]].forEach(function(x){tabs.appendChild(LP.el("button",{className:"tab-btn "+(LP.state.leadTab===x[0]?"active":""),text:x[1],onClick:function(){LP.state.leadTab=x[0];LP.renderLeads();}}))});
   panel.appendChild(tabs);panel.appendChild(LP.el("div",{id:"lead-body"}));root.appendChild(panel);
@@ -12,7 +12,7 @@ LP.renderLeads=async function(){
   await LP.drawLeads();
 };
 LP.drawLeads=async function(){
-  var root=LP.$("lead-body");LP.clear(root);
+  var root=LP.$("#lead-body");LP.clear(root);
   if(LP.state.leadTab==="companies"){
     var c=await LP.api("/api/companies");var companies=c.companies||[];
     if(!companies.length){root.appendChild(LP.el("div",{className:"empty",text:"No companies yet."}));return;}
@@ -44,9 +44,9 @@ LP.leadAction=async function(a,id){
 LP.openLeadModal=function(){
   var body=LP.modal("Add lead","Manual entry still uses the existing backend validation.");
   body.innerHTML='<div class="grid two"><div class="field"><label>Company</label><input id="m-company" class="input"></div><div class="field"><label>Business email</label><input id="m-email" class="input" type="email"></div><div class="field"><label>Campaign</label><input id="m-campaign" class="input"></div></div><div class="actions"><button id="m-add" class="btn-good">Add lead</button></div>';
-  LP.$("m-add").onclick=async function(){
+  LP.$("#m-add").onclick=async function(){
     try{
-      var d=await LP.api("/api/prospects/manual_add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company_name:LP.$("m-company").value,email:LP.$("m-email").value,campaign:LP.$("m-campaign").value})});
+      var d=await LP.api("/api/prospects/manual_add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company_name:LP.$("#m-company").value,email:LP.$("#m-email").value,campaign:LP.$("#m-campaign").value})});
       if(!d.success)throw new Error(d.error);LP.toast("Lead added","good");LP.closeModal();LP.renderLeads();
     }catch(e){LP.toast(e.message,"error")}
   };
