@@ -55,7 +55,7 @@ def test_browser_smoke_local():
             assert isinstance(products, list)
             page.get_by_text("Find Customers", exact=True).first.click()
             page.wait_for_function(
-                "() => { const el = document.getElementById('view-find'); return !!el && el.classList.contains('active') && el.textContent.trim().length > 0; }",
+                "() => { const el = document.getElementById('view-find'); return !!el && el.classList.contains('active') && el.textContent.includes('Come vuoi cercare?'); }",
                 timeout=5000,
             )
             find_view = page.locator("#view-find")
