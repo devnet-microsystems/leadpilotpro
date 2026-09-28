@@ -2272,8 +2272,6 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         "worker_pid": worker.pid,
     }
 
-    return {"success": True, "message": "Auto-Pilot started!", "campaign_id": rc_id}
-
 
 # ==============================================================================
 # P5.1: Product Endpoints
