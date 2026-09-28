@@ -1114,10 +1114,32 @@ def get_send_logs(user: dict = Depends(get_current_user)):
 
 @app.get("/api/research_logs")
 def get_research_logs(user: dict = Depends(get_current_user)):
-    if not RESEARCH_LOG_PATH.exists():
-        return {"logs": ""}
-    with open(RESEARCH_LOG_PATH, "r") as f:
-        return {"logs": f.read()}
+    # Prefer the legacy global research.log when it contains data.
+    if RESEARCH_LOG_PATH.exists():
+        global_text = RESEARCH_LOG_PATH.read_text()
+        if global_text.strip():
+            return {"logs": global_text}
+
+    # Auto-Pilot writes the authoritative live output to campaign_<id>_osint.log.
+    # Fall back to the newest research campaign so Diagnostics reflects the
+    # same run whose status is shown in Find Customers.
+    try:
+        db = OutreachDatabase(DB_PATH)
+        row = db.connection.execute(
+            "SELECT id, status FROM research_campaigns ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            campaign_id = row["id"]
+            log_path = DB_PATH.parent / f"campaign_{campaign_id}_osint.log"
+            if log_path.exists():
+                return {
+                    "logs": f"Campaign {campaign_id} · status: {row['status']}\n"
+                             + log_path.read_text()
+                }
+    except Exception as exc:
+        return {"logs": f"Research log unavailable: {type(exc).__name__}: {exc}"}
+
+    return {"logs": ""}
 
 @app.get("/api/download_log/{log_type}")
 def download_log(log_type: str, user: dict = Depends(get_current_user)):
