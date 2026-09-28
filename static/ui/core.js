@@ -46,7 +46,7 @@ LP.modal=function(title,subtitle){
 };
 LP.closeModal=function(){LP.clear(LP.$("#modal-root"));};
 LP.bindShell=function(){
-  LP.$(".nav-btn").forEach(function(b){
+  LP.$$(".nav-btn").forEach(function(b){
     b.onclick=function(){LP.nav(b.dataset.view);};
   });
   var adv=LP.$("#btn-advanced");
