@@ -67,6 +67,8 @@ def test_browser_smoke_local():
                 or ("No ready products" in find_text)
                 or ("Nessun prodotto READY" in find_text)
             )
+            if "Come vuoi cercare?" in find_text:
+                assert "LOG LIVE" in find_text
 
             page.locator("#btn-advanced").click()
             page.wait_for_function(
