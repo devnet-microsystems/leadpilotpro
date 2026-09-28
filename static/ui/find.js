@@ -187,7 +187,7 @@ function renderSendSection(root){
 
 LP.renderFind=async function(){
   var root=LP.$("#view-find");
-  LP.page(root,"Trova clienti","Research → Approva → Campagna → Invia","Un solo percorso operativo. Le impostazioni tecniche restano fuori dal flusso.");
+  LP.page(root,"Find Customers","Trova clienti · Research → Approva → Campagna → Invia","Un solo percorso operativo. Le impostazioni tecniche restano fuori dal flusso.");
   try{
     await LP.loadProducts();
     await LP.loadSearchConfig();
