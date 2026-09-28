@@ -2272,31 +2272,23 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     # Write a durable first line before the worker starts, so RUNNING never looks silent.
     _write_auto_pilot_log(str(DB_PATH), rc_id, "Queued with providers=" + (",".join(selected_providers) or "default") + f", ai={'on' if ai_enabled else 'off'}.")
 
+    # Cloud Run request-based instances may throttle or suspend detached child
+    # processes as soon as the HTTP response is returned. Keep the worker inside
+    # the active request so CPU remains allocated and the live log is reliable.
     try:
-        import multiprocessing
-        worker = multiprocessing.Process(
-            target=run_auto_pilot_worker,
-            args=(
-                str(DB_PATH), product_id, rc_id, max_leads,
-                selected_providers, ai_enabled,
-                target_role, target_industry, target_location, target_country,
-            ),
-            daemon=False,
+        run_auto_pilot_worker(
+            str(DB_PATH), product_id, rc_id, max_leads,
+            selected_providers, ai_enabled,
+            target_role, target_industry, target_location, target_country,
         )
-        worker.start()
     except Exception as exc:
-        _write_auto_pilot_log(str(DB_PATH), rc_id, f"Could not start worker: {type(exc).__name__}: {exc}")
-        conn_fail = db_connector.get_connection(str(DB_PATH))
-        conn_fail.execute("UPDATE research_campaigns SET status='FAILED' WHERE id=?", (rc_id,))
-        conn_fail.commit()
-        conn_fail.close()
-        raise HTTPException(status_code=500, detail=f"Auto-Pilot worker failed to start: {exc}")
+        _write_auto_pilot_log(str(DB_PATH), rc_id, f"Auto-Pilot request worker failed: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Auto-Pilot worker failed: {exc}")
 
     return {
         "success": True,
-        "message": "Auto-Pilot started!",
+        "message": "Auto-Pilot completed.",
         "campaign_id": rc_id,
-        "worker_pid": worker.pid,
     }
 
 
