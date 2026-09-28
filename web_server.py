@@ -1342,19 +1342,21 @@ def generate_template(req: GenerateRequest, user: dict = Depends(get_current_use
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 class SettingsRequest(BaseModel):
-    smtp_host: str
-    smtp_port: str
-    smtp_user: str
-    smtp_password: str
-    smtp_from_email: str
-    company_name: str
-    company_website: str
-    daily_limit: str
-    delay_minimum: str
-    delay_maximum: str
-    ai_api_key: str | None = ""
-    ai_base_url: str | None = "https://api.openai.com/v1"
-    ai_model: str | None = "gpt-4o"
+    # All settings are optional so partial updates (for example search-provider
+    # toggles) cannot overwrite unrelated SMTP/AI configuration.
+    smtp_host: str | None = None
+    smtp_port: str | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    company_name: str | None = None
+    company_website: str | None = None
+    daily_limit: str | None = None
+    delay_minimum: str | None = None
+    delay_maximum: str | None = None
+    ai_api_key: str | None = None
+    ai_base_url: str | None = None
+    ai_model: str | None = None
     # OSINT search provider settings persisted by the Settings UI.
     ddg_enabled: str | None = None
     searxng_enabled: str | None = None
