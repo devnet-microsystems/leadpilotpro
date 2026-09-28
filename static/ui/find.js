@@ -26,6 +26,19 @@ LP.loadPipeline=async function(){
   LP.state.outreachCampaigns=x[3]||[];
 };
 
+LP.loadResearchLog=async function(campaignId){
+  if(!campaignId)return "";
+  try{
+    var d=await LP.api("/api/research_logs?campaign_id="+encodeURIComponent(campaignId));
+    LP.state.liveLog=d.logs||"";
+    LP.state.liveLogStatus=d.status||"";
+    return LP.state.liveLog;
+  }catch(e){
+    LP.state.liveLog=LP.state.liveLog||"";
+    return LP.state.liveLog;
+  }
+};
+
 LP.loadSearchConfig=async function(){
   try{
     LP.state.searchProviders=await LP.api("/api/search_providers");
@@ -246,6 +259,9 @@ LP.renderFind=async function(){
     await LP.loadProducts();
     await LP.loadSearchConfig();
     await LP.loadPipeline();
+    if(LP.state.pipeline&&LP.state.pipeline.campaign_id){
+      await LP.loadResearchLog(LP.state.pipeline.campaign_id);
+    }
 
     var ready=LP.state.products.filter(function(p){return p.status==="READY"});
     var loading=LP.$("#find-products-loading");
@@ -373,12 +389,25 @@ LP.drawFind=function(){
   ]);
   root.appendChild(productCard);
 
+  var liveLogText=s.liveLog||(
+    status==="RUNNING"
+      ? "Worker in attesa di output…"
+      : "Nessun log disponibile per questa campagna."
+  );
+  var liveLog=LP.el("pre",{
+    id:"find-live-log",
+    className:"find-live-log",
+    text:liveLogText,
+    style:"margin:12px 0 0;padding:12px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid rgba(127,127,127,.28);border-radius:10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;"
+  });
   var runStatus = LP.card([
     LP.el("div",{className:"run-status "+(status==="RUNNING"?"running":"")},[
       LP.el("div",{className:"run-status-title",text:status==="RUNNING"?"● RICERCA IN CORSO":"Ricerca pronta"}),
       LP.el("div",{className:"run-status-text",text:status==="RUNNING"
-        ? "Sto cercando aziende, verificando i risultati e applicando i filtri di qualità. Non chiudere questa pagina."
-        : "Configura i parametri e avvia la ricerca."})
+        ? "Sto cercando aziende, verificando i risultati e applicando i filtri di qualità. Il log qui sotto si aggiorna in diretta."
+        : "Configura i parametri e avvia la ricerca."}),
+      LP.el("div",{className:"muted small",text:"LOG LIVE"}),
+      liveLog
     ])
   ],"run-status-card");
 
@@ -486,6 +515,10 @@ LP.drawFind=function(){
       LP.button("Apri Advanced","btn-secondary",function(){LP.nav("advanced")})
     ])
   ]));
+
+  var liveLogBox=LP.$("#find-live-log");
+  if(liveLogBox)liveLogBox.scrollTop=liveLogBox.scrollHeight;
+  if(status==="RUNNING")LP.watchFind();
 };
 
 LP.reviewEvidence=async function(id,action){
@@ -498,15 +531,25 @@ LP.reviewEvidence=async function(id,action){
 };
 
 LP.watchFind=function(){
-  if(LP.state.poll)clearInterval(LP.state.poll);
-  LP.state.poll=setInterval(async function(){
+  if(LP.state.poll)return;
+
+  var tick=async function(){
     try{
       await LP.loadPipeline();
+      var campaignId=LP.state.pipeline&&LP.state.pipeline.campaign_id;
+      if(campaignId){
+        await LP.loadResearchLog(campaignId);
+      }
       LP.drawFind();
       if(!LP.state.pipeline||LP.state.pipeline.campaign_status!=="RUNNING"){
         clearInterval(LP.state.poll);LP.state.poll=null;
       }
-    }catch(e){}
-  },3000);
+    }catch(e){
+      LP.state.liveLog=LP.state.liveLog||"";
+    }
+  };
+
+  tick();
+  LP.state.poll=setInterval(tick,2000);
 };
 })();
