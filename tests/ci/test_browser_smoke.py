@@ -63,6 +63,23 @@ def test_browser_smoke_local():
             find_text = find_view.inner_text()
             assert "Find Customers" in find_text
             assert ("No ready products" in find_text) or ("Discovery budget" in find_text) or ("Ready products only." in find_text)
+
+            page.locator("#btn-advanced").click()
+            page.wait_for_function(
+                "() => { const el = document.getElementById('view-advanced'); return !!el && el.classList.contains('active') && el.textContent.includes('Products') && el.textContent.includes('Diagnostics'); }",
+                timeout=5000,
+            )
+            page.locator("#open-products").click()
+            page.wait_for_function(
+                "() => { const el = document.getElementById('advanced-body'); return !!el && el.textContent.includes('Product library'); }",
+                timeout=5000,
+            )
+            page.locator("#btn-advanced").click()
+            page.locator("#open-diagnostics").click()
+            page.wait_for_function(
+                "() => { const el = document.getElementById('advanced-body'); return !!el && el.textContent.includes('Health:'); }",
+                timeout=5000,
+            )
             browser.close()
     finally:
         proc.terminate()
