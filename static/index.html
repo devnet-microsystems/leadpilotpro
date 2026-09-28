@@ -5,20 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LeadPilot Pro</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <div id="toast-root" aria-live="polite"></div>
-
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark">LP</div>
-      <div>
-        <div class="brand-name">LeadPilot Pro</div>
-        <div class="brand-sub">Find customers. Review. Outreach.</div>
-      </div>
+      <div><div class="brand-name">LeadPilot Pro</div><div class="brand-sub">Find customers. Review. Outreach.</div></div>
     </div>
-
     <nav class="main-nav" aria-label="Primary navigation">
       <button class="nav-btn active" data-view="home">Home</button>
       <button class="nav-btn" data-view="find">Find Customers</button>
@@ -26,13 +20,11 @@
       <button class="nav-btn" data-view="outreach">Outreach</button>
       <button class="nav-btn" data-view="settings">Settings</button>
     </nav>
-
     <div class="top-actions">
-      <button class="icon-btn" id="btn-advanced" title="Advanced tools" aria-label="Advanced tools">⋯</button>
+      <button class="icon-btn" id="btn-advanced" title="Advanced">⋯</button>
       <button class="ghost-btn" id="btn-logout">Logout</button>
     </div>
   </header>
-
   <main class="app-shell">
     <section id="view-home" class="view active"></section>
     <section id="view-find" class="view"></section>
@@ -41,9 +33,14 @@
     <section id="view-settings" class="view"></section>
     <section id="view-advanced" class="view"></section>
   </main>
-
   <div id="modal-root"></div>
-
-  <script src="/static/app.js?v=20260928-ui1"></script>
+  <script src="/static/ui/core.js"></script>
+  <script src="/static/ui/home.js"></script>
+  <script src="/static/ui/find.js"></script>
+  <script src="/static/ui/leads.js"></script>
+  <script src="/static/ui/outreach.js"></script>
+  <script src="/static/ui/settings.js"></script>
+  <script src="/static/ui/advanced.js"></script>
+  <script src="/static/app.js?v=20260928-ui3"></script>
 </body>
 </html>
