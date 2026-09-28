@@ -1949,7 +1949,8 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
 def orchestrator_evidence(product_id: int, user: dict = Depends(get_current_user)):
     db = OutreachDatabase(DB_PATH)
     q = """
-        SELECT p.id, p.company_name, p.target_url,
+        SELECT p.id, p.company_name, p.business_email, p.target_url,
+               p.status, p.campaign_id,
                pf.fit_status, pf.fit_score, pf.reason,
                pf.matched_signals, pf.missing_signals,
                pf.negative_signals, pf.evidence_source_ids,
