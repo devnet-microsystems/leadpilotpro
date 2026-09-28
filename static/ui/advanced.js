@@ -33,12 +33,24 @@ LP.deleteProduct=async function(id){
   try{await LP.api("/api/products/"+id,{method:"DELETE"});LP.toast("Product deleted","good");LP.renderProducts()}catch(e){LP.toast(e.message,"error")}
 };
 LP.renderDiagnostics=async function(){
-  var r=LP.$("#advanced-body");r.innerHTML="";
+  var r=LP.$("#advanced-body");LP.clear(r);
   try{
     var h=await LP.api("/health"),p=await LP.api("/api/search_providers");
-    r.innerHTML='<div class="card pad">'+LP.note("Health: "+(h.status||"unknown")+" · database: "+String(h.database),h.status==="ok"?"good":"bad")+'</div>'+p.map(function(x){return'<div class="card pad"><div class="provider"><div><strong>'+LP.esc(x.name)+'</strong><small>Enabled: '+String(x.enabled)+'</small></div><span class="pill '+(x.enabled?"good":"warn")+'">'+(x.enabled?"ON":"OFF")+'</span></div></div>'}).join("");
-    var logs=await Promise.all([LP.api("/api/system_logs").catch(function(){return{logs:""}}),LP.api("/api/research_logs").catch(function(){return{logs:""}}),LP.api("/api/send_logs").catch(function(){return{logs:""}})]);
-    ["System log","Research log","Sender log"].forEach(function(n,i){r.insertAdjacentHTML("beforeend",'<div class="card pad"><h3>'+n+'</h3><pre class="logbox">'+LP.esc(logs[i].logs||"")+'</pre></div>')});
+    r.appendChild(LP.card([LP.note("Health: "+(h.status||"unknown")+" · database: "+String(h.database),h.status==="ok"?"good":"bad")]));
+    p.forEach(function(x){
+      r.appendChild(LP.card([LP.el("div",{className:"provider"},[
+        LP.el("div",{},[LP.el("strong",{text:x.name}),LP.el("small",{text:"Enabled: "+String(x.enabled)})]),
+        LP.el("span",{className:"pill "+(x.enabled?"good":"warn"),text:x.enabled?"ON":"OFF"})
+      ])]));
+    });
+    var logs=await Promise.all([
+      LP.api("/api/system_logs").catch(function(){return{logs:""}}),
+      LP.api("/api/research_logs").catch(function(){return{logs:""}}),
+      LP.api("/api/send_logs").catch(function(){return{logs:""}})
+    ]);
+    ["System log","Research log","Sender log"].forEach(function(name,i){
+      r.appendChild(LP.card([LP.el("h3",{text:name}),LP.el("pre",{className:"logbox",text:logs[i].logs||""})]));
+    });
   }catch(e){r.appendChild(LP.note(e.message,"bad"))}
-};
+}
 })();
