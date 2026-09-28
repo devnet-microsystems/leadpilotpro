@@ -2256,7 +2256,14 @@ def run_auto_pilot_worker(
 
         conn = db_connector.get_connection(db_path_str)
         try:
-            if cancelled:
+            current = conn.execute(
+                "SELECT status FROM research_campaigns WHERE id = ?",
+                (camp_id,),
+            ).fetchone()
+            current_status = current[0] if current else None
+            if current_status == "CANCELLED":
+                final_status = "CANCELLED"
+            elif cancelled:
                 final_status = "CANCELLED"
             else:
                 final_status = "COMPLETED" if returncode == 0 else "FAILED"
@@ -2312,18 +2319,18 @@ def orchestrator_cancel(campaign_id: int, user: dict = Depends(get_current_user)
         }
 
     db.connection.execute(
-        "UPDATE research_campaigns SET status = 'CANCEL_REQUESTED' WHERE id = ?",
+        "UPDATE research_campaigns SET status = 'CANCELLED' WHERE id = ?",
         (campaign_id,),
     )
     db.connection.commit()
     _write_auto_pilot_log(
         str(DB_PATH), campaign_id,
-        "Cancel requested by user."
+        "Cancellation confirmed by user."
     )
     return {
         "success": True,
-        "status": "CANCEL_REQUESTED",
-        "message": "Annullamento richiesto. Il processo verrà fermato.",
+        "status": "CANCELLED",
+        "message": "Ricerca annullata.",
     }
 
 
