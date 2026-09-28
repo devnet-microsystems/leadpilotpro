@@ -370,14 +370,17 @@ LP.drawFind=function(){
       if(!reviewed)selectable.push(x);
       evid.appendChild(LP.el("div",{className:"evidence-row"},[
         LP.el("div",{className:"evidence-main"},[
-          reviewed?null:LP.el("input",{type:"checkbox",className:"evidence-check","data-id":String(x.id)}),
+          (function(){if(reviewed)return null;var cb=LP.el("input",{type:"checkbox",className:"evidence-check"});cb.dataset.id=String(x.id);return cb;})(),
           LP.el("div",{},[
             LP.el("h4",{text:String(x.company_name||"")+" · "+Number(x.fit_score||0)+"/100"}),
             LP.el("p",{text:String(x.business_email||"")}),
             LP.el("p",{text:x.reason||"Match qualificato."})
           ])
         ]),
-        reviewed?LP.el("span",{className:"pill good",text:"APPROVATO"}):LP.el("span",{className:"muted small",text:"Da approvare"})
+        reviewed?LP.el("span",{className:"pill good",text:"APPROVATO"}):LP.el("div",{className:"actions"},[
+          LP.el("span",{className:"muted small",text:"Da approvare"}),
+          LP.button("Rifiuta","btn-danger",function(){LP.reviewEvidence(x.id,"REJECT").then(function(){LP.loadPipeline().then(LP.drawFind)}).catch(function(e){LP.toast(e.message,"error")})})
+        ])
       ]));
     });
     if(!s.evidence.length)evid.appendChild(LP.el("div",{className:"empty",text:"Nessun risultato qualificato."}));
