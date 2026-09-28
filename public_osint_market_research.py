@@ -473,7 +473,9 @@ def parse_args():
     
     # Quick Search Mode
     parser.add_argument("--quick-search", action="store_true", help="Run without saving to DB and output JSON")
-    parser.add_argument("--provider", default="", help="Restrict execution to one enabled search provider (e.g. BraveProvider)")
+    parser.add_argument("--provider", default="", help="Restrict execution to one enabled search provider (legacy)")
+    parser.add_argument("--providers", default="", help="Comma-separated enabled search providers to use for this run")
+    parser.add_argument("--no-ai", action="store_true", help="Disable AI-generated match explanation for this run")
     
     return parser.parse_args()
 
@@ -509,18 +511,26 @@ def main():
         "BraveProvider": BraveProvider()
     }
 
-    # By default use providers explicitly enabled in Settings. A manual search
-    # may pin execution to one enabled provider.
-    selected_provider = (args.provider or "").strip()
-    if selected_provider:
-        provider = providers.get(selected_provider)
-        if not provider:
-            logging.error(f"Unknown provider: {selected_provider}")
-            return 2
-        if not provider.enabled:
-            logging.error(f"Provider is disabled in Settings: {selected_provider}")
-            return 2
-        active_providers = [provider]
+    # The main workflow can choose one or more providers per research run.
+    # Settings still controls credentials/availability; the run-level selection
+    # decides which available providers participate in this specific search.
+    selected_names = []
+    if (args.providers or "").strip():
+        selected_names = [x.strip() for x in args.providers.split(",") if x.strip()]
+    elif (args.provider or "").strip():
+        selected_names = [(args.provider or "").strip()]
+
+    if selected_names:
+        active_providers = []
+        for name in selected_names:
+            provider = providers.get(name)
+            if not provider:
+                logging.error(f"Unknown provider: {name}")
+                return 2
+            if not provider.enabled:
+                logging.error(f"Provider is disabled or not configured in Settings: {name}")
+                return 2
+            active_providers.append(provider)
     else:
         active_providers = [p for p in providers.values() if p.enabled]
 
@@ -574,6 +584,15 @@ def main():
                     location=", ".join(locations) if locations else target_ctx.location,
                     country=", ".join(countries) if countries else target_ctx.country
                 )
+
+    # Explicit run-level target overrides win over the product-derived ICP.
+    if args.role or args.industry or args.location or args.country:
+        target_ctx = TargetContext(
+            role=args.role or target_ctx.role,
+            industry=args.industry or target_ctx.industry,
+            location=args.location or target_ctx.location,
+            country=args.country or target_ctx.country
+        )
         
         c.execute("SELECT * FROM campaign_queries WHERE campaign_id=? AND is_enabled=1", (args.campaign_id,))
         concrete_queries = [dict(r) for r in c.fetchall()]
@@ -816,16 +835,23 @@ def main():
                                 location=target_ctx.location
                             )
                             
-                            # 2. AI Qualification
+                            # 2. AI Qualification / explanation. The user can
+                            # disable this per run; in that case keep a deterministic
+                            # explanation so the normal qualification gate still works.
                             reason = ""
                             if score >= 40:
-                                reason = AIExtractor.generate_why_matched(
-                                    db_path=str(database_path),
-                                    campaign_id=args.campaign_id,
-                                    lead_email=lead.email,
-                                    page_title=res.title,
-                                    context_text=res.snippet
-                                )
+                                if not args.no_ai:
+                                    reason = AIExtractor.generate_why_matched(
+                                        db_path=str(database_path),
+                                        campaign_id=args.campaign_id,
+                                        lead_email=lead.email,
+                                        page_title=res.title,
+                                        context_text=res.snippet
+                                    )
+                                if not reason:
+                                    reason = (
+                                        f"Matched the selected target with relevance score {int(score)}/100."
+                                    )
                             
                             qualified_lead = dataclasses.replace(lead, relevance_score=score, why_matched=reason)
                             
