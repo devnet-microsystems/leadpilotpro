@@ -1,14 +1,14 @@
 (function(){
 var LP=window.LP;
 LP.renderAdvanced=function(){
-  var r=LP.LP.$("view-advanced");
+  var r=LP.$("view-advanced");
   LP.page(r,"Advanced","System tools","Product management and diagnostics live here. Full research tooling is preserved in static/old.");
   r.innerHTML+='<div class="grid two"><div class="card pad"><h3>Products</h3><p>Create, analyze and delete products.</p><button id="open-products" class="btn-secondary">Open</button></div><div class="card pad"><h3>Diagnostics</h3><p>Health, providers and raw logs.</p><button id="open-diagnostics" class="btn-secondary">Open</button></div><div class="card pad"><h3>Archived advanced tools</h3><p>Manual search, Query Studio, Templates and the full campaign builder.</p><a class="btn-secondary" target="_blank" style="text-decoration:none;display:inline-block;margin-top:12px" href="/static/old/index.html">Open old UI</a></div></div><div id="advanced-body" class="section"></div>';
   LP.$("open-products").onclick=LP.renderProducts;
   LP.$("open-diagnostics").onclick=LP.renderDiagnostics;
 };
 LP.renderProducts=async function(){
-  var r=LP.LP.$("advanced-body"),rows=await LP.api("/api/products");
+  var r=LP.$("advanced-body"),rows=await LP.api("/api/products");
   r.innerHTML='<div class="card pad"><div class="section-title"><div><h3>Product library</h3><p>'+rows.length+' products</p></div><button id="new-product" class="btn-good">Add product</button></div><div class="table-wrap"><table class="table"><thead><tr><th>ID</th><th>Name</th><th>Status</th><th></th></tr></thead><tbody>'+rows.map(function(p){return'<tr><td>'+Number(p.id)+'</td><td>'+LP.esc(p.name)+'</td><td>'+LP.esc(p.status)+'</td><td><button class="btn-danger delp" data-id="'+Number(p.id)+'">Delete</button></td></tr>'}).join("")+'</tbody></table></div></div>';
   LP.$("new-product").onclick=LP.openProduct;
   r.querySelectorAll(".delp").forEach(function(b){b.onclick=function(){LP.deleteProduct(Number(b.dataset.id))}});
@@ -33,7 +33,7 @@ LP.deleteProduct=async function(id){
   try{await LP.api("/api/products/"+id,{method:"DELETE"});LP.toast("Product deleted","good");LP.renderProducts()}catch(e){LP.toast(e.message,"error")}
 };
 LP.renderDiagnostics=async function(){
-  var r=LP.LP.$("advanced-body");LP.clear(r);
+  var r=LP.$("advanced-body");LP.clear(r);
   try{
     var h=await LP.api("/health"),p=await LP.api("/api/search_providers");
     r.appendChild(LP.card([LP.note("Health: "+(h.status||"unknown")+" · database: "+String(h.database),h.status==="ok"?"good":"bad")]));
