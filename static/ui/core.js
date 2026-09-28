@@ -19,7 +19,7 @@ LP.el=function(tag,attrs,children){
   var n=document.createElement(tag),k; attrs=attrs||{};
   for(k in attrs){if(!Object.prototype.hasOwnProperty.call(attrs,k))continue;
     if(k==="text")n.textContent=attrs[k]; else if(k==="className")n.className=attrs[k];
-    else if(k.indexOf("on")===0)n.addEventListener(k.slice(2),attrs[k]); else n.setAttribute(k,attrs[k]);
+    else if(k.indexOf("on")===0)n.addEventListener(k.slice(2).toLowerCase(),attrs[k]); else n.setAttribute(k,attrs[k]);
   }
   (children||[]).forEach(function(c){n.appendChild(typeof c==="string"?document.createTextNode(c):c);}); return n;
 };
