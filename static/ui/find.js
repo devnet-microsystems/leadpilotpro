@@ -341,7 +341,8 @@ LP.drawFind=function(){
   });
   budget.value=s.findBudget||"150";
 
-  var run=LP.button(status==="RUNNING"?"Ricerca in corso…":"🔎 AVVIA RICERCA","btn-good",async function(){
+  var activeRun=status==="RUNNING"||status==="CANCEL_REQUESTED";
+  var run=LP.button(activeRun?"Ricerca in corso…":"🔎 AVVIA RICERCA","btn-good",async function(){
     var providers=selectedProviders();
     if(!providers.length){
       LP.toast("Seleziona almeno un motore di ricerca.","error");
@@ -373,7 +374,7 @@ LP.drawFind=function(){
       LP.watchFind();
     }catch(e){LP.toast(e.message,"error");run.disabled=false;}
   });
-  run.disabled=status==="RUNNING";
+  run.disabled=activeRun;
 
   var productCard=LP.card([
     LP.el("div",{className:"step-row"},[
@@ -403,9 +404,11 @@ LP.drawFind=function(){
   var runStatus = LP.card([
     LP.el("div",{className:"run-status "+(status==="RUNNING"?"running":"")},[
       LP.el("div",{className:"run-status-title",text:status==="RUNNING"?"● RICERCA IN CORSO":"Ricerca pronta"}),
-      LP.el("div",{className:"run-status-text",text:status==="RUNNING"
-        ? "Sto cercando aziende, verificando i risultati e applicando i filtri di qualità. Il log qui sotto si aggiorna in diretta."
-        : "Configura i parametri e avvia la ricerca."}),
+      LP.el("div",{className:"run-status-text",text:status==="CANCEL_REQUESTED"
+        ? "Annullamento richiesto. Sto fermando il processo OSINT…"
+        : (status==="RUNNING"
+          ? "Sto cercando aziende, verificando i risultati e applicando i filtri di qualità. Il log qui sotto si aggiorna in diretta."
+          : "Configura i parametri e avvia la ricerca.")}),
       LP.el("div",{className:"muted small",text:"LOG LIVE"}),
       liveLog
     ])
@@ -423,8 +426,19 @@ LP.drawFind=function(){
       budget
     ]),
     LP.el("div",{className:"actions"},[
-      LP.el("span",{className:"muted small",text:status==="RUNNING"?"RUNNING":"PRONTO"}),
-      run
+      LP.el("span",{className:"muted small",text:status==="CANCEL_REQUESTED"?"ANNULLAMENTO…":(status==="RUNNING"?"RUNNING":"PRONTO")}),
+      run,
+      activeRun ? LP.button("✕ ANNULLA RICERCA","btn-danger",async function(){
+        if(!confirm("Vuoi interrompere questa ricerca? Il processo OSINT verrà fermato."))return;
+        try{
+          await LP.api("/api/orchestrator/cancel/"+encodeURIComponent(s.pipeline.campaign_id),{
+            method:"POST",
+            headers:{"Content-Type":"application/json"}
+          });
+          LP.toast("Annullamento richiesto","good");
+          LP.watchFind();
+        }catch(e){LP.toast(e.message,"error");}
+      }) : null
     ]),
     runStatus
   ]));
@@ -541,7 +555,8 @@ LP.watchFind=function(){
         await LP.loadResearchLog(campaignId);
       }
       LP.drawFind();
-      if(!LP.state.pipeline||LP.state.pipeline.campaign_status!=="RUNNING"){
+      var liveStatus=LP.state.pipeline&&LP.state.pipeline.campaign_status;
+      if(!liveStatus||["RUNNING","CANCEL_REQUESTED"].indexOf(liveStatus)<0){
         clearInterval(LP.state.poll);LP.state.poll=null;
       }
     }catch(e){
