@@ -17,11 +17,13 @@ LP.loadPipeline=async function(){
   var x=await Promise.all([
     LP.api("/api/orchestrator/pipeline_status?product_id="+LP.state.productId),
     LP.api("/api/orchestrator/evidence?product_id="+LP.state.productId),
-    LP.api("/api/orchestrator/approved_leads?product_id="+LP.state.productId)
+    LP.api("/api/orchestrator/approved_leads?product_id="+LP.state.productId),
+    LP.api("/api/campaigns")
   ]);
   LP.state.pipeline=x[0];
   LP.state.evidence=x[1]||[];
   LP.state.approvedLeads=x[2]||[];
+  LP.state.outreachCampaigns=x[3]||[];
 };
 
 LP.loadSearchConfig=async function(){
