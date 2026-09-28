@@ -373,6 +373,15 @@ LP.drawFind=function(){
   ]);
   root.appendChild(productCard);
 
+  var runStatus = LP.card([
+    LP.el("div",{className:"run-status "+(status==="RUNNING"?"running":"")},[
+      LP.el("div",{className:"run-status-title",text:status==="RUNNING"?"● RICERCA IN CORSO":"Ricerca pronta"}),
+      LP.el("div",{className:"run-status-text",text:status==="RUNNING"
+        ? "Sto cercando aziende, verificando i risultati e applicando i filtri di qualità. Non chiudere questa pagina."
+        : "Configura i parametri e avvia la ricerca."})
+    ])
+  ],"run-status-card");
+
   root.appendChild(LP.card([
     LP.el("div",{className:"step-row"},[
       LP.el("div",{className:"step-label"},[
@@ -385,9 +394,10 @@ LP.drawFind=function(){
       budget
     ]),
     LP.el("div",{className:"actions"},[
-      LP.el("span",{className:"muted small",text:status}),
+      LP.el("span",{className:"muted small",text:status==="RUNNING"?"RUNNING":"PRONTO"}),
       run
-    ])
+    ]),
+    runStatus
   ]));
 
   var metrics=LP.el("div",{className:"metrics"});
