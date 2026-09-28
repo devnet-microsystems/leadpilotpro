@@ -1,7 +1,7 @@
 (function(){
 var LP=window.LP;
 LP.renderLeads=async function(){
-  var root=LP.LP.$("view-leads");LP.page(root,"Pipeline","Leads","Review prospects or inspect company rollups.");
+  var root=LP.$("view-leads");LP.page(root,"Pipeline","Leads","Review prospects or inspect company rollups.");
   var panel=LP.card([]),tabs=LP.el("div",{className:"tabs"});
   [["pending","Review"],["approved","Approved"],["rejected","Rejected"],["companies","Companies"]].forEach(function(x){tabs.appendChild(LP.el("button",{className:"tab-btn "+(LP.state.leadTab===x[0]?"active":""),text:x[1],onClick:function(){LP.state.leadTab=x[0];LP.renderLeads();}}))});
   panel.appendChild(tabs);panel.appendChild(LP.el("div",{id:"lead-body"}));root.appendChild(panel);
@@ -12,7 +12,7 @@ LP.renderLeads=async function(){
   await LP.drawLeads();
 };
 LP.drawLeads=async function(){
-  var root=LP.LP.$("lead-body");LP.clear(root);
+  var root=LP.$("lead-body");LP.clear(root);
   if(LP.state.leadTab==="companies"){
     var c=await LP.api("/api/companies");var companies=c.companies||[];
     if(!companies.length){root.appendChild(LP.el("div",{className:"empty",text:"No companies yet."}));return;}
