@@ -2231,12 +2231,20 @@ def run_auto_pilot_worker(
                     )
                     try:
                         if process.poll() is None:
-                            process.terminate()
+                            import signal
+                            if os.name == "posix":
+                                os.killpg(process.pid, signal.SIGTERM)
+                            else:
+                                process.terminate()
                             process.wait(timeout=10)
                     except Exception:
                         try:
                             if process.poll() is None:
-                                process.kill()
+                                if os.name == "posix":
+                                    import signal
+                                    os.killpg(process.pid, signal.SIGKILL)
+                                else:
+                                    process.kill()
                         except Exception:
                             pass
                     break
