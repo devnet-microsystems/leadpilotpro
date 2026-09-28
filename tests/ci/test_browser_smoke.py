@@ -55,12 +55,7 @@ def test_browser_smoke_local():
             assert isinstance(products, list)
             page.get_by_text("Find Customers", exact=True).first.click()
             page.wait_for_function(
-                "() => { 
-                    const el = document.getElementById('view-find');
-                    if (!el || !el.classList.contains('active')) return false;
-                    const text = el.textContent || "";
-                    return text.includes('LOG LIVE') || text.includes('Nessun prodotto READY') || text.includes('No ready products');
-                }",
+                "() => { const el = document.getElementById('view-find'); if (!el || !el.classList.contains('active')) return false; const text = el.textContent || ''; return text.includes('LOG LIVE') || text.includes('Nessun prodotto READY') || text.includes('No ready products'); }",
                 timeout=5000,
             )
             find_view = page.locator("#view-find")
