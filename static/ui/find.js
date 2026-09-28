@@ -188,43 +188,61 @@ function renderSendSection(root){
 LP.renderFind=async function(){
   var root=LP.$("#view-find");
   LP.page(root,"Find Customers","Trova clienti · Research → Approva → Campagna → Invia","Un solo percorso operativo. Le impostazioni tecniche restano fuori dal flusso.");
+
+  // Render the workflow shell immediately. API calls populate it afterward,
+  // so navigation never looks empty while the backend is loading.
+  var layout=LP.el("div",{className:"find-layout"});
+  var side=LP.card([], "side-card");
+  side.appendChild(LP.el("div",{className:"section-title"},[
+    LP.el("div",{},[
+      LP.el("h3",{text:"Prodotti"}),
+      LP.el("p",{text:"Scegli il prodotto da cui partire."})
+    ])
+  ]));
+  side.appendChild(LP.el("div",{id:"find-products-loading",className:"muted",text:"Caricamento prodotti…"}));
+  layout.appendChild(side);
+
+  var main=LP.el("div",{id:"find-main"});
+  main.appendChild(LP.card([
+    LP.el("div",{className:"section-title"},[
+      LP.el("div",{},[
+        LP.el("h3",{text:"1. Come vuoi cercare?"}),
+        LP.el("p",{text:"Configurazione della ricerca in arrivo…"})
+      ])
+    ])
+  ]));
+  layout.appendChild(main);
+  root.appendChild(layout);
+
   try{
     await LP.loadProducts();
     await LP.loadSearchConfig();
     await LP.loadPipeline();
 
     var ready=LP.state.products.filter(function(p){return p.status==="READY"});
+    var loading=LP.$("#find-products-loading");
+    if(loading)LP.clear(loading);
+
     if(!ready.length){
-      root.appendChild(LP.note("Nessun prodotto READY. Crea e analizza prima un prodotto.","warn"));
+      if(loading)loading.appendChild(LP.note("Nessun prodotto READY. Crea e analizza prima un prodotto.","warn"));
+      else main.appendChild(LP.note("Nessun prodotto READY. Crea e analizza prima un prodotto.","warn"));
       return;
     }
 
-    var layout=LP.el("div",{className:"find-layout"});
-    var side=LP.card([], "side-card");
-    side.appendChild(LP.el("div",{className:"section-title"},[
-      LP.el("div",{},[
-        LP.el("h3",{text:"Prodotti"}),
-        LP.el("p",{text:"Scegli il prodotto da cui partire."})
-      ])
-    ]));
-    var list=LP.el("div",{className:"side-list"});
     ready.forEach(function(p){
-      list.appendChild(LP.el("button",{
+      if(!loading)return;
+      loading.appendChild(LP.el("button",{
         className:"side-item "+(Number(p.id)===Number(LP.state.productId)?"active":""),
         onClick:function(){LP.state.productId=p.id;LP.renderFind();}
       },[LP.el("strong",{text:p.name}),LP.el("small",{text:"READY"})]));
     });
-    side.appendChild(list);
-    layout.appendChild(side);
-    layout.appendChild(LP.el("div",{id:"find-main"}));
-    root.appendChild(layout);
 
     LP.drawFind();
   }catch(e){
-    root.appendChild(LP.note(e.message,"bad"));
+    var target=LP.$("#find-main")||root;
+    target.appendChild(LP.note("Impossibile caricare la ricerca: "+e.message,"bad"));
   }
 };
-
 LP.drawFind=function(){
   var root=LP.$("#find-main");
   if(!root)return;
