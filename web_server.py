@@ -1930,15 +1930,6 @@ def orchestrator_evaluate_fit(payload: dict, background_tasks: BackgroundTasks, 
     if max_leads < 10 or max_leads > 5000:
         raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
 
-    selected_providers = payload.get("providers") or []
-    if not isinstance(selected_providers, list):
-        selected_providers = [str(selected_providers)]
-    selected_providers = [str(x).strip() for x in selected_providers if str(x).strip()]
-    ai_enabled = bool(payload.get("ai_enabled", True))
-    target_role = str(payload.get("role") or "").strip()
-    target_industry = str(payload.get("industry") or "").strip()
-    target_location = str(payload.get("location") or "").strip()
-    target_country = str(payload.get("country") or "").strip()
     db = OutreachDatabase(DB_PATH)
     q = "SELECT COUNT(*) FROM prospect_product_fit WHERE product_id = ? AND fit_status = 'FIT'"
     count = db.connection.execute(q, (product_id,)).fetchone()[0]
@@ -2101,6 +2092,109 @@ To stop receiving these emails, reply "unsubscribe" or write to {{unsubscribe_ad
         "prepared": len(eligible),
     }
 
+def _write_auto_pilot_log(db_path_str: str, camp_id: int, msg: str) -> None:
+    from pathlib import Path
+    from datetime import datetime, timezone
+    db_parent = Path(db_path_str).parent
+    log_path = db_parent / f"campaign_{camp_id}_osint.log"
+    global_log = db_parent / "system_logs.log"
+    timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    line = f"[{timestamp}] [Auto-Pilot {camp_id}] {msg}\n"
+    for path in (log_path, global_log):
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+                f.flush()
+        except Exception:
+            pass
+
+
+def run_auto_pilot_worker(
+    db_path_str: str,
+    prod_id: int,
+    camp_id: int,
+    max_leads: int,
+    selected_providers: list[str],
+    ai_enabled: bool,
+    target_role: str,
+    target_industry: str,
+    target_location: str,
+    target_country: str,
+):
+    import subprocess
+    from pathlib import Path
+
+    _write_auto_pilot_log(db_path_str, camp_id, "Worker started.")
+    try:
+        venv_python = Path(ROOT) / ".venv" / "bin" / "python"
+        py_bin = str(venv_python) if venv_python.exists() else "python3"
+        cmd = [
+            py_bin, "-u", "public_osint_market_research.py",
+            "--campaign-id", str(camp_id),
+            "--max-leads", str(max_leads),
+        ]
+        if selected_providers:
+            cmd.extend(["--providers", ",".join(selected_providers)])
+        if not ai_enabled:
+            cmd.append("--no-ai")
+        if target_role:
+            cmd.extend(["--role", target_role])
+        if target_industry:
+            cmd.extend(["--industry", target_industry])
+        if target_location:
+            cmd.extend(["--location", target_location])
+        if target_country:
+            cmd.extend(["--country", target_country])
+
+        _write_auto_pilot_log(db_path_str, camp_id, "Running OSINT Discovery: " + " ".join(cmd[3:]))
+
+        log_path = Path(db_path_str).parent / f"campaign_{camp_id}_osint.log"
+        global_log = Path(db_path_str).parent / "system_logs.log"
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(ROOT),
+                text=True,
+                bufsize=1,
+                start_new_session=True,
+            )
+            if process.stdout:
+                for line in process.stdout:
+                    log_file.write(line)
+                    log_file.flush()
+                    try:
+                        with open(global_log, "a", encoding="utf-8") as gf:
+                            gf.write(line)
+                    except Exception:
+                        pass
+            returncode = process.wait()
+
+        _write_auto_pilot_log(db_path_str, camp_id, f"OSINT Discovery completed with code {returncode}.")
+        conn = db_connector.get_connection(db_path_str)
+        try:
+            final_status = "COMPLETED" if returncode == 0 else "FAILED"
+            conn.execute("UPDATE research_campaigns SET status = ? WHERE id = ?", (final_status, camp_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+        if returncode == 0:
+            _write_auto_pilot_log(db_path_str, camp_id, "Auto-Pilot sequence complete.")
+        else:
+            _write_auto_pilot_log(db_path_str, camp_id, "Auto-Pilot stopped because OSINT discovery failed.")
+    except Exception as exc:
+        _write_auto_pilot_log(db_path_str, camp_id, f"Worker error: {type(exc).__name__}: {exc}")
+        try:
+            conn = db_connector.get_connection(db_path_str)
+            conn.execute("UPDATE research_campaigns SET status = 'FAILED' WHERE id = ?", (camp_id,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+
 @app.post("/api/orchestrator/auto_pilot")
 def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     product_id = payload.get("product_id")
@@ -2113,6 +2207,16 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
         raise HTTPException(status_code=400, detail="max_leads must be an integer")
     if max_leads < 10 or max_leads > 5000:
         raise HTTPException(status_code=400, detail="max_leads must be between 10 and 5000")
+
+    selected_providers = payload.get("providers") or []
+    if not isinstance(selected_providers, list):
+        selected_providers = [str(selected_providers)]
+    selected_providers = [str(x).strip() for x in selected_providers if str(x).strip()]
+    ai_enabled = bool(payload.get("ai_enabled", True))
+    target_role = str(payload.get("role") or "").strip()
+    target_industry = str(payload.get("industry") or "").strip()
+    target_location = str(payload.get("location") or "").strip()
+    target_country = str(payload.get("country") or "").strip()
          
     import sqlite3
     import db_connector
@@ -2138,77 +2242,36 @@ def orchestrator_auto_pilot(payload: dict, background_tasks: BackgroundTasks, us
     conn.commit()
     conn.close()
     
-    def run_auto_pilot(db_path_str: str, prod_id: int, camp_id: int, max_leads: int):
-        import subprocess
-        from pathlib import Path
-        from datetime import datetime, timezone
-        from product_intelligence.agent import ProductIntelligenceAgent
-        
-        log_path = Path(db_path_str).parent / f"campaign_{camp_id}_osint.log"
-        global_log = Path(db_path_str).parent / "system_logs.log"
-        
-        def write_log(msg):
-            timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            line = f"[{timestamp}] [Auto-Pilot {camp_id}] {msg}\n"
-            with open(log_path, "a") as f: f.write(line)
-            with open(global_log, "a") as f: f.write(line)
-            
-        write_log(f"--- ENGAGING AUTO-PILOT FOR CAMPAIGN {camp_id} ---")
-        
-        venv_python = ROOT / ".venv" / "bin" / "python"
-        py_bin = str(venv_python) if venv_python.exists() else "python3"
-        cmd = [
-            py_bin, "-u", "public_osint_market_research.py",
-            "--campaign-id", str(camp_id),
-            "--max-leads", str(max_leads)
-        ]
-        if selected_providers:
-            cmd.extend(["--providers", ",".join(selected_providers)])
-        if not ai_enabled:
-            cmd.append("--no-ai")
-        if target_role:
-            cmd.extend(["--role", target_role])
-        if target_industry:
-            cmd.extend(["--industry", target_industry])
-        if target_location:
-            cmd.extend(["--location", target_location])
-        if target_country:
-            cmd.extend(["--country", target_country])
-        
-        write_log("Running OSINT Discovery...")
-        
-        with open(log_path, "a") as log_file:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=str(ROOT), text=True)
-            for line in iter(process.stdout.readline, ''):
-                log_file.write(line)
-                log_file.flush()
-                with open(global_log, "a") as gf: gf.write(line)
-            process.stdout.close()
-            returncode = process.wait()
-        
-        write_log(f"OSINT Discovery completed with code {returncode}.")
-        
-        import sqlite3
-        import db_connector
-        conn2 = db_connector.get_connection(db_path_str)
-        
-        if returncode != 0:
-            conn2.execute("UPDATE research_campaigns SET status = 'FAILED' WHERE id = ?", (camp_id,))
-            conn2.commit()
-            conn2.close()
-            write_log("Auto-Pilot stopped because OSINT discovery failed.")
-            return
-        
-        write_log("OSINT Discovery completed successfully. Product-fit evaluation was performed by the discovery engine.")
-        
-        # Evidence review remains a human gate. Auto-Pilot may discover and score fits,
-        # but it must never mark evidence as reviewed on behalf of the user.
-        conn2.execute("UPDATE research_campaigns SET status = 'COMPLETED' WHERE id = ?", (camp_id,))
-        conn2.commit()
-        conn2.close()
-        write_log("Auto-Pilot sequence complete.")
-            
-    background_tasks.add_task(run_auto_pilot, str(DB_PATH), product_id, rc_id, max_leads)
+    # Write a durable first line before the worker starts, so RUNNING never looks silent.
+    _write_auto_pilot_log(str(DB_PATH), rc_id, "Queued with providers=" + (",".join(selected_providers) or "default") + f", ai={'on' if ai_enabled else 'off'}.")
+
+    try:
+        import multiprocessing
+        worker = multiprocessing.Process(
+            target=run_auto_pilot_worker,
+            args=(
+                str(DB_PATH), product_id, rc_id, max_leads,
+                selected_providers, ai_enabled,
+                target_role, target_industry, target_location, target_country,
+            ),
+            daemon=False,
+        )
+        worker.start()
+    except Exception as exc:
+        _write_auto_pilot_log(str(DB_PATH), rc_id, f"Could not start worker: {type(exc).__name__}: {exc}")
+        conn_fail = db_connector.get_connection(str(DB_PATH))
+        conn_fail.execute("UPDATE research_campaigns SET status='FAILED' WHERE id=?", (rc_id,))
+        conn_fail.commit()
+        conn_fail.close()
+        raise HTTPException(status_code=500, detail=f"Auto-Pilot worker failed to start: {exc}")
+
+    return {
+        "success": True,
+        "message": "Auto-Pilot started!",
+        "campaign_id": rc_id,
+        "worker_pid": worker.pid,
+    }
+
     return {"success": True, "message": "Auto-Pilot started!", "campaign_id": rc_id}
 
 
