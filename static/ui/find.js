@@ -414,6 +414,24 @@ LP.drawFind=function(){
     ])
   ],"run-status-card");
 
+  var runActions=[
+    LP.el("span",{className:"muted small",text:status==="CANCEL_REQUESTED"?"ANNULLAMENTO…":(status==="RUNNING"?"RUNNING":"PRONTO")}),
+    run
+  ];
+  if(activeRun){
+    runActions.push(LP.button("✕ ANNULLA RICERCA","btn-danger",async function(){
+      if(!confirm("Vuoi interrompere questa ricerca? Il processo OSINT verrà fermato."))return;
+      try{
+        await LP.api("/api/orchestrator/cancel/"+encodeURIComponent(s.pipeline.campaign_id),{
+          method:"POST",
+          headers:{"Content-Type":"application/json"}
+        });
+        LP.toast("Annullamento richiesto","good");
+        LP.watchFind();
+      }catch(e){LP.toast(e.message,"error");}
+    }));
+  }
+
   root.appendChild(LP.card([
     LP.el("div",{className:"step-row"},[
       LP.el("div",{className:"step-label"},[
@@ -425,21 +443,7 @@ LP.drawFind=function(){
       ]),
       budget
     ]),
-    LP.el("div",{className:"actions"},[
-      LP.el("span",{className:"muted small",text:status==="CANCEL_REQUESTED"?"ANNULLAMENTO…":(status==="RUNNING"?"RUNNING":"PRONTO")}),
-      run,
-      activeRun ? LP.button("✕ ANNULLA RICERCA","btn-danger",async function(){
-        if(!confirm("Vuoi interrompere questa ricerca? Il processo OSINT verrà fermato."))return;
-        try{
-          await LP.api("/api/orchestrator/cancel/"+encodeURIComponent(s.pipeline.campaign_id),{
-            method:"POST",
-            headers:{"Content-Type":"application/json"}
-          });
-          LP.toast("Annullamento richiesto","good");
-          LP.watchFind();
-        }catch(e){LP.toast(e.message,"error");}
-      }) : null
-    ]),
+    LP.el("div",{className:"actions"},runActions),
     runStatus
   ]));
 
