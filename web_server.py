@@ -2149,6 +2149,7 @@ def run_auto_pilot_worker(
     target_country: str,
 ):
     import subprocess
+    import threading
     from pathlib import Path
 
     _write_auto_pilot_log(db_path_str, camp_id, "Worker started.")
@@ -2173,7 +2174,10 @@ def run_auto_pilot_worker(
         if target_country:
             cmd.extend(["--country", target_country])
 
-        _write_auto_pilot_log(db_path_str, camp_id, "Running OSINT Discovery: " + " ".join(cmd[3:]))
+        _write_auto_pilot_log(
+            db_path_str, camp_id,
+            "Running OSINT Discovery: " + " ".join(cmd[3:])
+        )
 
         log_path = Path(db_path_str).parent / f"campaign_{camp_id}_osint.log"
         global_log = Path(db_path_str).parent / "system_logs.log"
@@ -2187,30 +2191,89 @@ def run_auto_pilot_worker(
                 bufsize=1,
                 start_new_session=True,
             )
-            if process.stdout:
+
+            def drain_output():
+                if not process.stdout:
+                    return
                 for line in process.stdout:
                     log_file.write(line)
                     log_file.flush()
                     try:
                         with open(global_log, "a", encoding="utf-8") as gf:
                             gf.write(line)
+                            gf.flush()
                     except Exception:
                         pass
-            returncode = process.wait()
 
-        _write_auto_pilot_log(db_path_str, camp_id, f"OSINT Discovery completed with code {returncode}.")
+            reader = threading.Thread(target=drain_output, name=f"leadpilot-log-{camp_id}", daemon=True)
+            reader.start()
+
+            cancelled = False
+            while process.poll() is None:
+                try:
+                    check = db_connector.get_connection(db_path_str)
+                    try:
+                        row = check.execute(
+                            "SELECT status FROM research_campaigns WHERE id = ?",
+                            (camp_id,),
+                        ).fetchone()
+                        current_status = row[0] if row else None
+                    finally:
+                        check.close()
+                except Exception:
+                    current_status = None
+
+                if current_status == "CANCEL_REQUESTED":
+                    cancelled = True
+                    _write_auto_pilot_log(
+                        db_path_str, camp_id,
+                        "Cancellation requested. Stopping OSINT process."
+                    )
+                    try:
+                        if process.poll() is None:
+                            process.terminate()
+                            process.wait(timeout=10)
+                    except Exception:
+                        try:
+                            if process.poll() is None:
+                                process.kill()
+                        except Exception:
+                            pass
+                    break
+
+                time.sleep(1)
+
+            returncode = process.wait()
+            reader.join(timeout=5)
+
         conn = db_connector.get_connection(db_path_str)
         try:
-            final_status = "COMPLETED" if returncode == 0 else "FAILED"
-            conn.execute("UPDATE research_campaigns SET status = ? WHERE id = ?", (final_status, camp_id))
+            if cancelled:
+                final_status = "CANCELLED"
+            else:
+                final_status = "COMPLETED" if returncode == 0 else "FAILED"
+            conn.execute(
+                "UPDATE research_campaigns SET status = ? WHERE id = ?",
+                (final_status, camp_id),
+            )
             conn.commit()
         finally:
             conn.close()
 
-        if returncode == 0:
+        if cancelled:
+            _write_auto_pilot_log(db_path_str, camp_id, "OSINT Discovery cancelled.")
+        elif returncode == 0:
+            _write_auto_pilot_log(db_path_str, camp_id, "OSINT Discovery completed successfully.")
             _write_auto_pilot_log(db_path_str, camp_id, "Auto-Pilot sequence complete.")
         else:
-            _write_auto_pilot_log(db_path_str, camp_id, "Auto-Pilot stopped because OSINT discovery failed.")
+            _write_auto_pilot_log(
+                db_path_str, camp_id,
+                f"OSINT Discovery completed with code {returncode}."
+            )
+            _write_auto_pilot_log(
+                db_path_str, camp_id,
+                "Auto-Pilot stopped because OSINT discovery failed."
+            )
     except Exception as exc:
         _write_auto_pilot_log(db_path_str, camp_id, f"Worker error: {type(exc).__name__}: {exc}")
         try:
@@ -2220,6 +2283,40 @@ def run_auto_pilot_worker(
             conn.close()
         except Exception:
             pass
+
+
+@app.post("/api/orchestrator/cancel/{campaign_id}")
+def orchestrator_cancel(campaign_id: int, user: dict = Depends(get_current_user)):
+    db = OutreachDatabase(DB_PATH)
+    row = db.connection.execute(
+        "SELECT id, status FROM research_campaigns WHERE id = ?",
+        (campaign_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Research campaign not found")
+
+    current_status = row["status"] if hasattr(row, "__getitem__") else row[1]
+    if current_status not in ("RUNNING", "CANCEL_REQUESTED"):
+        return {
+            "success": True,
+            "status": current_status,
+            "message": "La ricerca non è in esecuzione.",
+        }
+
+    db.connection.execute(
+        "UPDATE research_campaigns SET status = 'CANCEL_REQUESTED' WHERE id = ?",
+        (campaign_id,),
+    )
+    db.connection.commit()
+    _write_auto_pilot_log(
+        str(DB_PATH), campaign_id,
+        "Cancel requested by user."
+    )
+    return {
+        "success": True,
+        "status": "CANCEL_REQUESTED",
+        "message": "Annullamento richiesto. Il processo verrà fermato.",
+    }
 
 
 @app.post("/api/orchestrator/auto_pilot")
