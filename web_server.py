@@ -2039,15 +2039,19 @@ def orchestrator_prepare_outreach(payload: dict, user: dict = Depends(get_curren
             product_row = db.connection.execute("SELECT name FROM products WHERE id=?", (product_id,)).fetchone()
             product_name = product_row["name"] if product_row else f"Product {product_id}"
             template_name = f"leadpilot-auto-{product_id}-{secrets.token_hex(4)}.txt"
-            template_content = (
-                f"Subject: {product_name} — relevant for {{company_name}}\\n\\n"
-                f"Hi {{company_name}},\\n\\n"
-                f"I found your company while researching this market and thought this could be relevant.\\n\\n"
-                f"{{reason_for_contact}}\\n\\n"
-                f"If useful, I can send more information.\\n\\n"
-                f"--\\n{{company}} - {{website}}\\n"
-                f"To stop receiving these emails, reply \\"unsubscribe\\" or write to {{unsubscribe_address}}."
-            )
+            template_content = f"""Subject: {product_name} — relevant for {{company_name}}
+
+Hi {{company_name}},
+
+I found your company while researching this market and thought this could be relevant.
+
+{{reason_for_contact}}
+
+If useful, I can send more information.
+
+--
+{{company}} - {{website}}
+To stop receiving these emails, reply "unsubscribe" or write to {{unsubscribe_address}}."""
             db.connection.execute(
                 "INSERT INTO templates (name, content, created_at_utc) VALUES (?, ?, ?)",
                 (template_name, template_content, utc_now())
