@@ -61,8 +61,12 @@ def test_browser_smoke_local():
             find_view = page.locator("#view-find")
             assert find_view.count() == 1
             find_text = find_view.inner_text()
-            assert "Find Customers" in find_text
-            assert ("No ready products" in find_text) or ("Discovery budget" in find_text) or ("Ready products only." in find_text)
+            assert "find customers" in find_text.lower()
+            assert (
+                ("Come vuoi cercare?" in find_text)
+                or ("No ready products" in find_text)
+                or ("Nessun prodotto READY" in find_text)
+            )
 
             page.locator("#btn-advanced").click()
             page.wait_for_function(
