@@ -41,6 +41,32 @@ function field(id,label,value,placeholder){
   ]);
 }
 
+function listValues(value){
+  if(!value)return [];
+  if(Array.isArray(value))return value.map(function(x){
+    if(x&&typeof x==="object")return x.value||x.name||"";
+    return String(x||"");
+  }).filter(Boolean);
+  return [String(value)];
+}
+
+function productTargetDefaults(product){
+  var profile={};
+  try{
+    profile=product&&product.raw_summary?JSON.parse(product.raw_summary):{};
+  }catch(e){profile={};}
+  var roles=listValues(profile.potential_buyer_roles);
+  var industries=listValues(profile.target_industries);
+  var markets=listValues(profile.geographic_markets);
+
+  return {
+    role:roles.join(", "),
+    industry:industries.join(", "),
+    location:listValues(profile.geographic_locations||profile.target_locations).join(", "),
+    country:markets.join(", ")
+  };
+}
+
 function selectedProviders(){
   return (LP.state.searchProviders||[]).filter(function(p){
     var el=LP.$("#provider-"+p.id);
@@ -252,6 +278,7 @@ LP.drawFind=function(){
 
   var s=LP.state;
   var p=s.products.find(function(x){return Number(x.id)===Number(s.productId)});
+  var defaults=productTargetDefaults(p);
   var status=s.pipeline?s.pipeline.campaign_status:"NOT_STARTED";
   var qualified=Number(s.pipeline?s.pipeline.qualified:0);
   var approved=(s.approvedLeads||[]).length;
@@ -281,14 +308,14 @@ LP.drawFind=function(){
   targetCard.appendChild(LP.el("div",{className:"section-title"},[
     LP.el("div",{},[
       LP.el("h3",{text:"2. Target della ricerca"}),
-      LP.el("p",{text:"Lascia vuoto per usare automaticamente il profilo del prodotto."})
+      LP.el("p",{text:"Precompilato dal Product Intelligence. Puoi modificarlo per questa ricerca."})
     ])
   ]));
   targetCard.appendChild(LP.el("div",{className:"grid two"},[
-    field("find-role","Ruoli / buyer",s.findRole||"","CEO, CTO, Sales Director"),
-    field("find-industry","Settore",s.findIndustry||"","B2B SaaS, cybersecurity"),
-    field("find-location","Zona / città",s.findLocation||"","Milano, Toscana, Europa"),
-    field("find-country","Paese",s.findCountry||"","Italy, Germany, UK")
+    field("find-role","Ruoli / buyer",s.findRole!==undefined?s.findRole:defaults.role,"CEO, CTO, Sales Director"),
+    field("find-industry","Settore",s.findIndustry!==undefined?s.findIndustry:defaults.industry,"B2B SaaS, cybersecurity"),
+    field("find-location","Zona / città",s.findLocation!==undefined?s.findLocation:defaults.location,"Milano, Toscana, Europa"),
+    field("find-country","Paese",s.findCountry!==undefined?s.findCountry:defaults.country,"Italy, Germany, UK")
   ]));
   root.appendChild(targetCard);
 
