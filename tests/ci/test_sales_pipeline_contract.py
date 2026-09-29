@@ -23,3 +23,8 @@ def test_sales_pipeline_loads_persisted_product_profile(tmp_path, monkeypatch):
     assert persisted_product["status"] == "READY"
     assert json.loads(persisted_product["raw_summary"]) == profile
     assert persisted_profile == profile
+
+
+def test_global_market_is_not_a_search_country():
+    from product_intelligence.campaign_builder import MARKET_MAP
+    assert "global" not in MARKET_MAP
