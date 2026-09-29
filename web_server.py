@@ -324,7 +324,6 @@ def export_all_contacts(user: dict = Depends(get_current_user)):
         GROUP BY LOWER(TRIM(business_email))
         ORDER BY email
         '''
-        '''
     ).fetchall()
 
     output = io.StringIO()
