@@ -110,55 +110,10 @@ function renderProviderChoices(){
 }
 
 function exportAllEmails(){
-  var rows=[];
-  var seen={};
-  var sources=(LP.state.evidence||[]).concat(LP.state.approvedLeads||[]);
-
-  sources.forEach(function(x){
-    var email=String(x.business_email||x.email||"").trim().toLowerCase();
-    if(!email||seen[email])return;
-    seen[email]=true;
-    rows.push({
-      email:email,
-      company:String(x.company_name||"").trim(),
-      score:Number(x.fit_score||x.relevance_score||0),
-      status:x.evidence_reviewed_at?"APPROVED":"QUALIFIED",
-      reason:String(x.reason||x.why_matched||"").trim()
-    });
-  });
-
-  if(!rows.length){
-    LP.toast("Nessuna email da esportare.","error");
-    return;
-  }
-
-  function csvCell(v){
-    return '"'+String(v==null?"":v).replace(/"/g,'""')+'"';
-  }
-
-  var csv=[
-    ["email","company","score","status","reason"]
-      .map(csvCell).join(",")
-  ];
-  rows.forEach(function(x){
-    csv.push([
-      x.email,x.company,x.score,x.status,x.reason
-    ].map(csvCell).join(","));
-  });
-
-  var blob=new Blob(["\\ufeff"+csv.join("\\r\\n")],{type:"text/csv;charset=utf-8"});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement("a");
-  var productId=LP.state.productId||"all";
-  var stamp=new Date().toISOString().slice(0,10);
-  a.href=url;
-  a.download="leadpilot-emails-"+productId+"-"+stamp+".csv";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  LP.toast(rows.length+" email esportate","good");
+  // This export is database-wide, not limited to the current search/results.
+  window.location.href="/api/contacts/export_all";
 }
+
 
 function renderApprovedSection(root){
   var approved=LP.state.approvedLeads||[];
