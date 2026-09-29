@@ -16,8 +16,11 @@ class PGRow:
         return self._row.keys()
         
     def __iter__(self):
+        # Match sqlite3.Row iteration semantics: iterate over values,
+        # not column names. This is required when application code does
+        # tuple-unpacking such as: a, b, c = row.
         for k in self.keys():
-            yield k
+            yield self[k]
 
 def get_connection(db_path=None, **kwargs):
     """
