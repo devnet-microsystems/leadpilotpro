@@ -547,8 +547,8 @@ def main():
                 logging.error(f"Unknown provider: {name}")
                 return 2
             if not provider.enabled:
-                logging.error(f"Provider is disabled or not configured in Settings: {name}")
-                return 2
+                logging.info(f"Provider {name} was disabled in settings but explicitly requested; enabling for this run.")
+                provider.enabled = True
             active_providers.append(provider)
     else:
         active_providers = [p for p in providers.values() if p.enabled]
