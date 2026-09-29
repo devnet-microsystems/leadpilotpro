@@ -324,20 +324,8 @@ def export_all_contacts(user: dict = Depends(get_current_user)):
         GROUP BY LOWER(TRIM(business_email))
         ORDER BY email
         '''
+        '''
     ).fetchall()
-
-@app.get("/api/admin/download_db")
-def download_database(user: dict = Depends(get_current_user)):
-    """Download the current SQLite database file."""
-    if not database_available() or str(DB_PATH).startswith("postgres"):
-        raise HTTPException(status_code=400, detail="Database is not SQLite or not available")
-    
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        path=DB_PATH,
-        filename="outreach_queue.sqlite3",
-        media_type="application/octet-stream"
-    )
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -356,6 +344,21 @@ def download_database(user: dict = Depends(get_current_user)):
             "Content-Disposition": 'attachment; filename="leadpilot-all-emails.csv"'
         },
     )
+
+@app.get("/api/admin/download_db")
+def download_database(user: dict = Depends(get_current_user)):
+    """Download the current SQLite database file."""
+    if not database_available() or str(DB_PATH).startswith("postgres"):
+        raise HTTPException(status_code=400, detail="Database is not SQLite or not available")
+    
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=DB_PATH,
+        filename="outreach_queue.sqlite3",
+        media_type="application/octet-stream"
+    )
+
+
 
 @app.get("/api/contacts")
 def get_unique_contacts(user: dict = Depends(get_current_user)):
