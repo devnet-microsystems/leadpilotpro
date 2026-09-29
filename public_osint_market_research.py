@@ -746,6 +746,13 @@ def main():
                 
                 try:
                     adapted_query = provider.adapt_query(spec)
+                    # "Global/worldwide" is an unrestricted target, not a
+                    # literal search term. Remove it from legacy saved queries
+                    # created before the market normalization fix.
+                    if str(target_ctx.country).strip().lower() in {"global", "worldwide", "world", "international"}:
+                        import re
+                        adapted_query = re.sub(r"(?i)\\b(global|worldwide|world|international)\\b", "", adapted_query)
+                        adapted_query = " ".join(adapted_query.split())
                     provider_result = provider.search(query=adapted_query, limit=args.results_per_query, page=page, country=target_ctx.country)
                     results = provider_result.results
                     provider_state_str = provider_result.status.name
