@@ -296,6 +296,11 @@ LP.renderFind=async function(){
 LP.drawFind=function(){
   var root=LP.$("#find-main");
   if(!root)return;
+  var oldLogBox=LP.$("#find-live-log");
+  if(oldLogBox){
+    LP.state.logIsAtBottom=(oldLogBox.scrollHeight-oldLogBox.scrollTop-oldLogBox.clientHeight)<10;
+    LP.state.logScrollTop=oldLogBox.scrollTop;
+  }
   LP.clear(root);
 
   var s=LP.state;
@@ -548,7 +553,13 @@ LP.drawFind=function(){
   ]));
 
   var liveLogBox=LP.$("#find-live-log");
-  if(liveLogBox)liveLogBox.scrollTop=liveLogBox.scrollHeight;
+  if(liveLogBox){
+    if(LP.state.logIsAtBottom===false){
+      liveLogBox.scrollTop=LP.state.logScrollTop;
+    }else{
+      liveLogBox.scrollTop=liveLogBox.scrollHeight;
+    }
+  }
   if(status==="RUNNING")LP.watchFind();
 };
 
