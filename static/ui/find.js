@@ -6,6 +6,10 @@ LP.loadProducts=async function(){
   var ready=LP.state.products.filter(function(p){return p.status==="READY"});
   if(!LP.state.productId||!ready.some(function(p){return Number(p.id)===Number(LP.state.productId)})){
     LP.state.productId=ready.length?ready[0].id:null;
+    delete LP.state.findRole;
+    delete LP.state.findIndustry;
+    delete LP.state.findLocation;
+    delete LP.state.findCountry;
   }
 };
 
@@ -283,7 +287,14 @@ LP.renderFind=async function(){
       if(!loading)return;
       loading.appendChild(LP.el("button",{
         className:"side-item "+(Number(p.id)===Number(LP.state.productId)?"active":""),
-        onClick:function(){LP.state.productId=p.id;LP.renderFind();}
+        onClick:function(){
+          LP.state.productId=p.id;
+          delete LP.state.findRole;
+          delete LP.state.findIndustry;
+          delete LP.state.findLocation;
+          delete LP.state.findCountry;
+          LP.renderFind();
+        }
       },[LP.el("strong",{text:p.name}),LP.el("small",{text:"READY"})]));
     });
 
