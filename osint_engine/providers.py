@@ -392,6 +392,7 @@ class BraveProvider(UnifiedSearchProvider):
                 
             results = []
             rank = 1
+            rejected = 0
             web_results = data.get('web', {}).get('results', [])
             for item in web_results:
                 href = item.get('url', '')
@@ -411,9 +412,17 @@ class BraveProvider(UnifiedSearchProvider):
                     rank += 1
                     if len(results) >= limit:
                         break
-            
+                else:
+                    rejected += 1
+
+            raw_count = len(web_results)
+            logging.info(
+                "Brave Search API: raw=%d accepted=%d rejected=%d country=%s",
+                raw_count, len(results), rejected, country or "GLOBAL",
+            )
             status = ProviderState.SUCCESS if results else ProviderState.ZERO_RESULTS
-            return ProviderResult(status, results, "", 200, latency)
+            error = "" if results else f"No allowed results (raw={raw_count}, rejected={rejected})"
+            return ProviderResult(status, results, error, 200, latency)
             
         except urllib.error.HTTPError as e:
             latency = int((time.time() - start_time) * 1000)
