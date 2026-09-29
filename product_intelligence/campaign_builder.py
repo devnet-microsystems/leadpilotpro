@@ -81,8 +81,11 @@ def create_campaign_from_product(db_path: str, product_id: int) -> Optional[int]
                 if lang not in normalized_languages:
                     normalized_languages.append(lang)
             else:
-                if m not in normalized_markets:
-                    normalized_markets.append(m)
+                # Global/worldwide is not a concrete market and must not
+                # become a literal search term or country filter.
+                if str(m).strip().lower() not in {"global", "worldwide", "world", "international"}:
+                    if m not in normalized_markets:
+                        normalized_markets.append(m)
     else:
         # We DO NOT use "Global" anymore, but if empty, we leave it empty to avoid "UNKNOWN" leakage
         pass
