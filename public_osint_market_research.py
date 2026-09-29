@@ -420,6 +420,25 @@ class LeadStore:
         for row in cursor.fetchall():
             provider, family, template, query_count, domain_yield, total_leads, avg_relevance = row
             
+            # PostgreSQL/SQLite adapters can expose aggregate values with
+            # backend-specific scalar types. Normalize them before arithmetic.
+            try:
+                query_count = int(query_count or 0)
+            except (TypeError, ValueError):
+                query_count = int(float(query_count or 0))
+            try:
+                total_leads = float(total_leads or 0)
+            except (TypeError, ValueError):
+                total_leads = 0.0
+            try:
+                domain_yield = float(domain_yield or 0)
+            except (TypeError, ValueError):
+                domain_yield = 0.0
+            try:
+                avg_relevance = float(avg_relevance or 0)
+            except (TypeError, ValueError):
+                avg_relevance = 0.0
+            
             lead_yield = total_leads / query_count if query_count > 0 else 0
             
             # Normalize relevance (assuming max is 100)
