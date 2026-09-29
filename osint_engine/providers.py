@@ -76,9 +76,16 @@ class DuckDuckGoProvider(UnifiedSearchProvider):
                 latency = int((time.time() - start_time) * 1000)
                 return ProviderResult(ProviderState.RATE_LIMITED, [], "HTTP 429", 429, latency)
             
-            # Extract links via Playwright locator
-            locator = page.locator('a.result__snippet')
+            # DDG HTML uses result__a for the actual result link. Older
+            # code looked for result__snippet, which is not the anchor and
+            # therefore reported zero results even on healthy search pages.
+            locator = page.locator('a.result__a')
             count = locator.count()
+            if count == 0:
+                # Fallback for DDG HTML variants: use result anchors while
+                # excluding navigation/internal links.
+                locator = page.locator('a[href]')
+                count = locator.count()
             
             if count == 0:
                 content = page.content()
@@ -326,10 +333,18 @@ class BraveProvider(UnifiedSearchProvider):
         
         country = kwargs.get('country')
         if country:
-            # Map standard baseline countries to ISO-3166-1 alpha-2 for Brave API
-            c_map = {"italy": "it", "germany": "de", "switzerland": "ch", "uk": "gb", "us": "us"}
-            mapped_c = c_map.get(country.lower(), country.lower()[:2]) # fallback to first 2 letters
-            url += f"&country={mapped_c}"
+            # Global/worldwide means no geographic restriction. Only send a
+            # country filter when we can map it to a known ISO code.
+            c_map = {
+                "italy": "it", "italia": "it",
+                "germany": "de", "switzerland": "ch",
+                "uk": "gb", "united kingdom": "gb",
+                "us": "us", "united states": "us",
+                "france": "fr", "spain": "es"
+            }
+            mapped_c = c_map.get(country.strip().lower())
+            if mapped_c:
+                url += f"&country={mapped_c}"
             
         search_lang = kwargs.get('search_lang')
         if search_lang:
