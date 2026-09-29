@@ -688,8 +688,10 @@ def launch_research_campaign(id: int, background_tasks: BackgroundTasks, user: d
     db.connection.commit()
     
     import subprocess
+    log_path = DB_PATH.parent / f"campaign_{id}_osint.log"
+    log_file = open(log_path, "w")
     cmd = ["python3", "public_osint_market_research.py", "--campaign-id", str(id)]
-    subprocess.Popen(cmd)
+    subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
     
     return {"success": True, "message": "Campaign launched in background."}
 
