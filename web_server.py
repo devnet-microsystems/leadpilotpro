@@ -294,6 +294,49 @@ def get_prospects(status: str = "pending_review", date_from: str = None, date_to
     db = OutreachDatabase(DB_PATH)
     return [dict(r) for r in db.list_prospects(status, date_from, date_to)]
 
+@app.get("/api/contacts/export_all")
+def export_all_contacts(user: dict = Depends(get_current_user)):
+    """Export every distinct email currently stored in prospects."""
+    if not database_available():
+        return Response(
+            content="email,company,status\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="leadpilot-all-emails.csv"'},
+        )
+
+    db = OutreachDatabase(DB_PATH)
+    rows = db.connection.execute(
+        '''
+        SELECT
+            LOWER(TRIM(business_email)) AS email,
+            MAX(company_name) AS company,
+            MAX(status) AS status
+        FROM prospects
+        WHERE business_email IS NOT NULL
+          AND TRIM(business_email) != ''
+        GROUP BY LOWER(TRIM(business_email))
+        ORDER BY email
+        '''
+    ).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["email", "company", "status"])
+    for row in rows:
+        writer.writerow([
+            row["email"] or "",
+            row["company"] or "",
+            row["status"] or "",
+        ])
+
+    return Response(
+        content="\\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="leadpilot-all-emails.csv"'
+        },
+    )
+
 @app.get("/api/contacts")
 def get_unique_contacts(user: dict = Depends(get_current_user)):
     if not database_available():
