@@ -47,99 +47,119 @@ class UnifiedSearchProvider(ABC):
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 class DuckDuckGoProvider(UnifiedSearchProvider):
+    """DuckDuckGo search backed by the maintained ddgs project.
+
+    We deliberately keep the LeadPilot provider contract here and delegate
+    search/result parsing to ddgs instead of scraping DDG HTML ourselves.
+    """
+
     def __init__(self):
         super().__init__()
         db_val = get_db_setting("ddg_enabled", "")
         if db_val:
             self.enabled = db_val.lower() == "true"
         else:
-            # Provider activation must be explicit in Settings or env.
             self.enabled = os.getenv("DDG_ENABLED", "false").lower() == "true"
-        
+
     def adapt_query(self, spec: QuerySpec) -> str:
         q = spec.text
         for site in NEGATIVE_SITES:
             q += f" -site:{site}"
         return q
 
+    @staticmethod
+    def _region(country: str) -> str:
+        regions = {
+            "usa": "us-en",
+            "us": "us-en",
+            "united states": "us-en",
+            "uk": "uk-en",
+            "united kingdom": "uk-en",
+            "great britain": "uk-en",
+            "italy": "it-it",
+            "italia": "it-it",
+            "germany": "de-de",
+            "switzerland": "ch-de",
+            "france": "fr-fr",
+            "spain": "es-es",
+        }
+        return regions.get(str(country or "").strip().lower(), "us-en")
+
     def search(self, query: str, limit: int, page: Optional[Page] = None, **kwargs) -> ProviderResult:
-        if not page:
-            return ProviderResult(ProviderState.ERROR, [], "DuckDuckGoProvider requires a Playwright Page object")
-            
+        if not self.enabled:
+            return ProviderResult(ProviderState.OFF, [], "DuckDuckGoProvider is disabled")
+
         import time
         start_time = time.time()
         try:
-            url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-            response = page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            
-            if response and response.status == 429:
-                latency = int((time.time() - start_time) * 1000)
-                return ProviderResult(ProviderState.RATE_LIMITED, [], "HTTP 429", 429, latency)
-            
-            # DDG HTML uses result__a for the actual result link. Older
-            # code looked for result__snippet, which is not the anchor and
-            # therefore reported zero results even on healthy search pages.
-            locator = page.locator('a.result__a')
-            count = locator.count()
-            if count == 0:
-                # Fallback for DDG HTML variants: use result anchors while
-                # excluding navigation/internal links.
-                locator = page.locator('a[href]')
-                count = locator.count()
-            
-            if count == 0:
-                content = page.content()
-                latency = int((time.time() - start_time) * 1000)
-                if "chrome-error://chromewebdata/" in url or "chrome-error" in content:
-                    return ProviderResult(ProviderState.BLOCKED, [], "Browser navigation blocked", None, latency)
-                if "CAPTCHA" in content or "robot" in content.lower():
-                    return ProviderResult(ProviderState.BLOCKED, [], "CAPTCHA detected", None, latency)
-                return ProviderResult(ProviderState.ZERO_RESULTS, [], "No results found", response.status if response else 200, latency)
-            
-            raw_links = []
-            for i in range(count):
-                href = locator.nth(i).get_attribute("href")
-                if href:
-                    if 'uddg=' in href:
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-                        if 'uddg' in parsed:
-                            href = parsed['uddg'][0]
-                    raw_links.append(href)
-            
+            from ddgs import DDGS
+
+            country = kwargs.get("country", "")
+            region = self._region(country)
+            safe_limit = max(1, min(int(limit), 50))
+
+            # The maintained ddgs project owns the request/parsing logic.
+            # Its duckduckgo backend is the compatibility layer for DDG HTML
+            # and returns normalized dictionaries.
+            with DDGS(timeout=15) as client:
+                raw_results = client.text(
+                    query,
+                    region=region,
+                    safesearch="moderate",
+                    max_results=safe_limit,
+                    page=1,
+                    backend="duckduckgo",
+                )
+
+            raw_count = len(raw_results or [])
             results = []
+            rejected = 0
+            seen_urls = set()
             rank = 1
-            for href in raw_links:
-                if href.startswith('//lite.duckduckgo.com') or href.startswith('/lite/'):
+
+            for item in raw_results or []:
+                href = str(item.get("href") or item.get("url") or "").strip()
+                if not href:
                     continue
-                    
+
                 norm_url = URLNormalizer.normalize(href)
+                if not norm_url or norm_url in seen_urls:
+                    continue
+                seen_urls.add(norm_url)
+
                 domain = URLNormalizer.extract_domain(norm_url)
-                if DomainClassifier.is_allowed(domain):
-                    results.append(UnifiedSearchResult(
-                        title="DDG Result", 
-                        url=norm_url, 
-                        domain=domain, 
-                        snippet="", 
-                        engine="duckduckgo", 
-                        query=query, 
-                        rank=rank,
-                        discovered_at=self._utc_now()
-                    ))
-                    rank += 1
-                    if len(results) >= limit:
-                        break
-                        
+                if not DomainClassifier.is_allowed(domain):
+                    rejected += 1
+                    continue
+
+                results.append(UnifiedSearchResult(
+                    title=str(item.get("title") or "DDG Result"),
+                    url=norm_url,
+                    domain=domain,
+                    snippet=str(item.get("body") or item.get("snippet") or ""),
+                    engine="duckduckgo",
+                    query=query,
+                    rank=rank,
+                    discovered_at=self._utc_now(),
+                ))
+                rank += 1
+                if len(results) >= safe_limit:
+                    break
+
             latency = int((time.time() - start_time) * 1000)
+            logging.info(
+                "DuckDuckGo/ddgs: raw=%d accepted=%d rejected=%d region=%s",
+                raw_count, len(results), rejected, region,
+            )
             status = ProviderState.SUCCESS if results else ProviderState.ZERO_RESULTS
-            return ProviderResult(status, results, "", response.status if response else 200, latency)
-        except PlaywrightError as e:
-            latency = int((time.time() - start_time) * 1000)
-            logging.error(f"DuckDuckGo Playwright error: {e}")
-            return ProviderResult(ProviderState.ERROR, [], str(e), None, latency)
+            error = "" if results else f"No allowed results (raw={raw_count}, rejected={rejected})"
+            return ProviderResult(status, results, error, 200, latency)
+
         except Exception as e:
             latency = int((time.time() - start_time) * 1000)
-            logging.error(f"DuckDuckGo search error: {e}")
+            logging.error("DuckDuckGo/ddgs search error: %s", e)
             return ProviderResult(ProviderState.ERROR, [], str(e), None, latency)
+
 
 class BingProvider(UnifiedSearchProvider):
     def __init__(self):
