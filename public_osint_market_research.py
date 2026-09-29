@@ -177,7 +177,7 @@ class LeadStore:
             
         why_matched_text = getattr(lead, 'why_matched', '').strip()
         
-        if email_quality in ('VALID', 'LIKELY_VALID', 'ROLE_BASED') and (lead.relevance_score or 0) >= 40 and lead.confidence_type != 'SYSTEM' and why_matched_text:
+        if email_quality in ('VALID', 'LIKELY_VALID', 'ROLE_BASED') and (lead.relevance_score or 0) >= 15 and lead.confidence_type != 'SYSTEM':
             qualification_status = 'QUALIFIED'
             status = 'pending_review'
             rejection_reason = None

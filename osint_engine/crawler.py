@@ -26,7 +26,7 @@ class CompanyCrawler:
         self.campaign_id = campaign_id
         self.db_path = db_path
         self.max_pages_per_domain = int(os.getenv("MAX_PAGES_PER_DOMAIN", "5"))
-        self.crawl_timeout_ms = int(os.getenv("CRAWL_TIMEOUT", "8")) * 1000
+        self.crawl_timeout_ms = int(os.getenv("CRAWL_TIMEOUT", "15")) * 1000
         self.max_total_pages = int(os.getenv("MAX_TOTAL_CRAWL_PAGES", "500"))
         self.pages_crawled_this_run = 0
         self.domain_page_counts: Dict[str, int] = {}
@@ -86,7 +86,7 @@ class CompanyCrawler:
             self.pages_crawled_this_run += 1
             
             try:
-                response = page.goto(current_url, wait_until="domcontentloaded", timeout=self.crawl_timeout_ms)
+                response = page.goto(current_url, wait_until="load", timeout=self.crawl_timeout_ms)
                 if response is None or response.status >= 400:
                     continue
                 page.wait_for_timeout(500)

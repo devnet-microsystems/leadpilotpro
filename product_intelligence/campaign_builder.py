@@ -146,6 +146,10 @@ def create_campaign_from_product(db_path: str, product_id: int) -> Optional[int]
             else:
                 templates.append(("COMPANY_DISCOVERY", f'{kw} companies{market_suffix}'))
                 templates.append(("COMPANY_DISCOVERY", f'B2B {kw}{market_suffix}'))
+            
+            # 2.5 Email / Contact pages directly
+            templates.append(("TARGET_PAGE_DISCOVERY", f'{kw} "contact us"{market_suffix}'))
+            templates.append(("TARGET_PAGE_DISCOVERY", f'{kw} "email"{market_suffix}'))
                 
             # 3. Industry Query
             if industries:
