@@ -362,7 +362,7 @@ LP.drawFind=function(){
     s.findAiEnabled=LP.$("#find-ai").checked;
     run.disabled=true;
     try{
-      await LP.api("/api/orchestrator/auto_pilot",{
+      var req = LP.api("/api/orchestrator/auto_pilot",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
@@ -377,7 +377,10 @@ LP.drawFind=function(){
         })
       });
       LP.toast("Ricerca avviata","good");
+      if(!LP.state.pipeline) LP.state.pipeline = {};
+      LP.state.pipeline.campaign_status = "RUNNING";
       LP.watchFind();
+      await req;
     }catch(e){LP.toast(e.message,"error");run.disabled=false;}
   });
   run.disabled=activeRun;
