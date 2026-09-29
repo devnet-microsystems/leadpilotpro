@@ -1,6 +1,13 @@
 import os
 import sys
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response, Depends, status, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
